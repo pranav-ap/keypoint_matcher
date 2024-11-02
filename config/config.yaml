@@ -1,19 +1,22 @@
-log_level: WARNING  # TRACE WARNING
+log_level: TRACE  # TRACE WARNING
 
 dirs:
-    train_images: /home/stud/ath/ath_ws/data
-    output: /home/stud/ath/ath_ws/keypoint_matcher/output
-    test_images: ${dirs.output}/test_images
-    val_images: ${dirs.output}/val_images
+    root: /home/stud/ath/ath_ws
+    output: ${dirs.root}/keypoint_matcher/output
 
-image_size: [250, 340]  # [420, 540]
+image_size: [420, 540]  # [420, 540]  [250, 340]
 patch_size: 32
 
 train:
+    images: ${dirs.root}/datasets/euroc/V1_01_easy/mav0/cam0/data
+    matches: ${dirs.root}/keypoint_matcher/data/matches/V1_01_easy/matches
+    
     train_batch_size: 4
     val_batch_size: 4
 
-    max_epochs: 100
+    max_per_image: 10
+
+    max_epochs: 5
     check_val_every_n_epoch: 10
     num_sanity_val_steps: 1
     log_every_n_steps: 25
@@ -21,5 +24,9 @@ train:
     learning_rate: 1e-4
 
 test:
+    images: ${dirs.root}/datasets/euroc/V2_01_easy/mav0/cam0/data
+    matches: ${dirs.root}/keypoint_matcher/data/matches/V2_01_easy/matches
+    
     batch_size: 4
+    max_per_image: 10
 

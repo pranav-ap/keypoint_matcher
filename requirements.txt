@@ -1,7 +1,3 @@
-# conda install pytorch torchvision pytorch-cuda=12.4 -c pytorch -c nvidia
-
-jupyter
-jupyterlab
 numpy
 pandas
 pillow
@@ -14,3 +10,4 @@ scikit-image
 opencv-python
 loguru
 hydra-core
+jupyterlab

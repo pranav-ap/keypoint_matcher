@@ -21,25 +21,20 @@ def load_tensor(folder_path: str, filename: str) -> torch.tensor:
 
 class MatchesDataset(torch.utils.data.Dataset):
     # noinspection PyTypeChecker
-    def __init__(self, images_dir, matches_dir, subset, transform=None, max_per_image=None, sample_size=None):
+    def __init__(self, images_dir, matches_dir, matches_filenames, subset, transform, max_per_image=None):
         self.subset = subset
         self.transform = transform
         self.max_per_image = max_per_image
 
         self.images_dir = images_dir
         self.matches_dir = matches_dir
-
-        self.matches_names = sorted(os.listdir(self.matches_dir))
-
-        if sample_size is not None:
-            sample_indices = random.sample(range(len(self.matches_names)), min(sample_size, len(self.matches_names)))
-            self.matches_names = [self.matches_names[i] for i in sample_indices]
+        self.matches_filenames = matches_filenames
 
     def __len__(self):
-        return len(self.matches_names)
+        return len(self.matches_filenames)
 
     def _get_items(self, idx):
-        matches_filename = self.matches_names[idx]
+        matches_filename = self.matches_filenames[idx]
         matches = load_tensor(self.matches_dir, matches_filename)
 
         left_coords = [(int(x), int(y)) for x, y in matches[:, :2]]
@@ -51,18 +46,23 @@ class MatchesDataset(torch.utils.data.Dataset):
             left_coords = [left_coords[i] for i in sample_indices]
             right_coords = [right_coords[i] for i in sample_indices]
 
+        left_coords = torch.tensor(left_coords)
+        right_coords = torch.tensor(right_coords)
+        
         matches_filename, _ = matches_filename.split('.')
         reference_image_name, target_image_name, _ = matches_filename.split('_')
 
-        reference_image_path = os.path.join(self.images_dir, reference_image_name)
-        target_image_path = os.path.join(self.images_dir, target_image_name)
+        reference_image_path = os.path.join(self.images_dir, f'{reference_image_name}.png')
+        logger.debug(reference_image_path)        
+        assert os.path.exists(reference_image_path)
+        target_image_path = os.path.join(self.images_dir, f'{target_image_name}.png')
+        assert os.path.exists(target_image_path)
 
         reference_image = Image.open(reference_image_path).convert("RGB")
         target_image = Image.open(target_image_path).convert("RGB")
 
-        if self.transform:
-            reference_image = self.transform(reference_image)
-            target_image = self.transform(target_image)
+        reference_image = self.transform(reference_image)
+        target_image = self.transform(target_image)
 
         return left_coords, right_coords, reference_image, target_image
 
@@ -124,40 +124,43 @@ class MatchesDataModule(L.LightningDataModule):
         self.val_dataset: Optional[MatchesDataset] = None
         self.test_dataset: Optional[MatchesDataset] = None
 
-    def setup(self, stage=None):
+    def setup(self, stage=None):        
         if stage == "fit" or stage == "validate":
-            images_dir = config.dirs.data
-            matches_dir = config.dirs.data
-
+            matches_filenames = sorted(os.listdir(config.train.matches))
+            matches_filenames = random.sample(matches_filenames, 50)
+            
             self.train_dataset = MatchesDataset(
-                images_dir=images_dir,
-                matches_dir=matches_dir,
+                images_dir=config.train.images,
+                matches_dir=config.train.matches,
+                matches_filenames=matches_filenames[:30],
                 subset="train",
-                transform=self.train_transform
+                transform=self.train_transform,
+                max_per_image=config.train.max_per_image
             )
 
-            images_dir = config.dirs.data
-            matches_dir = config.dirs.data
-
             self.val_dataset = MatchesDataset(
-                images_dir=images_dir,
-                matches_dir=matches_dir,
+                images_dir=config.train.images,
+                matches_dir=config.train.matches,
+                matches_filenames=matches_filenames[30:],
                 subset="validate",
-                transform=self.test_transform
+                transform=self.test_transform,
+                max_per_image=config.train.max_per_image
             )
 
             logger.info(f"Train Dataset       : {len(self.train_dataset)} samples")
             logger.info(f"Validation Dataset  : {len(self.val_dataset)} samples")
 
         if stage == "test":
-            images_dir = config.dirs.data
-            matches_dir = config.dirs.data
-
+            matches_filenames = sorted(os.listdir(config.test.matches))
+            matches_filenames = random.sample(matches_filenames, 10)
+            
             self.test_dataset = MatchesDataset(
-                images_dir=images_dir,
-                matches_dir=matches_dir,
+                images_dir=config.test.images,
+                matches_dir=config.test.matches,
+                matches_filenames=matches_filenames,
                 subset="test",
-                transform=self.test_transform
+                transform=self.test_transform,
+                max_per_image=config.test.max_per_image
             )
 
             logger.info(f"Test Dataset  : {len(self.test_dataset)} samples")
