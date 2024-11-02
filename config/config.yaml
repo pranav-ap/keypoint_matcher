@@ -1,0 +1,25 @@
+log_level: WARNING  # TRACE WARNING
+
+dirs:
+    train_images: /home/stud/ath/ath_ws/data
+    output: /home/stud/ath/ath_ws/keypoint_matcher/output
+    test_images: ${dirs.output}/test_images
+    val_images: ${dirs.output}/val_images
+
+image_size: [250, 340]  # [420, 540]
+patch_size: 32
+
+train:
+    train_batch_size: 4
+    val_batch_size: 4
+
+    max_epochs: 100
+    check_val_every_n_epoch: 10
+    num_sanity_val_steps: 1
+    log_every_n_steps: 25
+    accumulate_grad_batches: 2
+    learning_rate: 1e-4
+
+test:
+    batch_size: 4
+
