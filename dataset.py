@@ -70,7 +70,7 @@ class MatchesDataset(torch.utils.data.Dataset):
     def _get_patches(image, coords):
         patches = []
 
-        width, height = image.size
+        width, height = config.image_size
         half_size = config.patch_size // 2
 
         for x, y in coords:

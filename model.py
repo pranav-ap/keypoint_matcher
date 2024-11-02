@@ -36,16 +36,14 @@ class KeypointMatcherModel(nn.Module):
     def __init__(self, embedding_dim=128):
         super().__init__()
 
-        # Encoder layers with dilations to preserve spatial resolution
         self.encoder = nn.Sequential(
             ResidualBlock(1, 64, dilation=1),
             ResidualBlock(64, 128, dilation=2),
             ResidualBlock(128, 256, dilation=4),
-            ResidualBlock(256, embedding_dim, dilation=8),  # Final layer outputs `embedding_dim` channels per pixel
+            ResidualBlock(256, embedding_dim, dilation=8),
         )
 
     def forward(self, patches):
-        # Encoder
         logger.debug(f"Input shape: {patches.shape}")
         x = self.encoder[0](patches)
         logger.debug(f"After first ResidualBlock: {x.shape}")
@@ -54,7 +52,8 @@ class KeypointMatcherModel(nn.Module):
         x = self.encoder[2](x)
         logger.debug(f"After third ResidualBlock: {x.shape}")
         x = self.encoder[3](x)
-        logger.debug(f"After fourth ResidualBlock (encoder end): {x.shape}")
+        logger.debug(f"After fourth ResidualBlock: {x.shape}")
 
         # Output is a dense feature map where each pixel has an embedding vector of size `embedding_dim`
-        return x  # Shape: (batch, embedding_dim, H, W), same H, W as the input image
+        # Shape: (batch, embedding_dim, H, W), same H, W as the input image
+        return x

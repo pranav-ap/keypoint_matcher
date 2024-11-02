@@ -1,13 +1,11 @@
-import numpy as np
-
 from utils import logger
 from config import config
+import numpy as np
 import os
 import torch
 import torch.nn.functional as F
 import lightning.pytorch as pl
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, TQDMProgressBar, LearningRateMonitor
-from utils import create_three_image_row
 
 
 torch.set_float32_matmul_precision('medium')
@@ -32,10 +30,11 @@ class KeypointMatcherLightning(pl.LightningModule):
         return self.model(patches)
 
     @staticmethod
-    def contrastive_loss(reference_embeddings, target_embeddings, labels, margin=1.0):
+    def contrastive_loss(reference_embeddings, target_embeddings, labels):
         distances = F.pairwise_distance(reference_embeddings, target_embeddings)
 
         positive_loss = labels * torch.pow(distances, 2)  # Positive pairs should be close
+        margin = 1
         negative_loss = (1 - labels) * torch.pow(torch.clamp(margin - distances, min=0), 2)  # Negative pairs should be far
 
         return torch.mean(positive_loss + negative_loss)
@@ -91,7 +90,9 @@ class KeypointMatcherLightning(pl.LightningModule):
         reference_embeddings = self.model(reference_patches)
         target_embeddings = self.model(target_patches)
 
-        loss = self.compute_loss(reference_embeddings, target_embeddings)
+        labels = [1] * len(left_coords)
+
+        loss = self.compute_loss(reference_embeddings, target_embeddings, labels)
         self.log("test_loss", loss, prog_bar=True, on_epoch=True, on_step=False)
 
         return loss
