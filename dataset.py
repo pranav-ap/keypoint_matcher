@@ -37,7 +37,7 @@ class MatchesDataset(torch.utils.data.Dataset):
         self.transform_tensor = T.Compose([
             T.ToTensor(),
             T.ConvertImageDtype(torch.float),
-            T.Normalize(mean=[0.5], std=[0.5]),
+            # T.Normalize(mean=[0.5], std=[0.5]),
         ])
 
     def __len__(self):

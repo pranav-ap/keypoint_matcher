@@ -9,8 +9,11 @@ sns.set_theme(style="darkgrid")
 
 
 def plot_first_image_from_batch(reference_patches, target_patches):
-    to_pil = T.ToPILImage()
-    
+    to_pil = T.ToPILImage()    
+    denormalize = T.Compose([
+        T.Normalize(mean=[-0.5 / 0.5], std=[1 / 0.5]),
+    ])
+
     num_patches = reference_patches.size(1)  # Should be 10 patches
     patch_size = 128  # Resized to 128x128
     
@@ -22,8 +25,14 @@ def plot_first_image_from_batch(reference_patches, target_patches):
     # Loop through each patch pair and paste into the combined image
     for j in range(num_patches):  # 0 to 9 for 10 patches
         # Convert and resize patches
-        img1 = to_pil(reference_patches[0, j]).resize((patch_size, patch_size))  # Resize to 128x128
-        img2 = to_pil(target_patches[0, j]).resize((patch_size, patch_size))  # Resize to 128x128
+        img1 = reference_patches[0, j]
+        img2 = target_patches[0, j]
+        
+        # img1 = denormalize(img1)
+        # img2 = denormalize(img2)
+        
+        img1 = to_pil(img1).resize((patch_size, patch_size))
+        img2 = to_pil(img2).resize((patch_size, patch_size))  
     
         # Calculate positions
         y = j * patch_size  # Position for the current row

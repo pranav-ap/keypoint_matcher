@@ -93,21 +93,24 @@ class KeypointMatcherModel:
         descriptors = descriptors.squeeze(2)
     
         return descriptors
-        
-    def match_keypoint(self, reference_embeddings, target_embeddings, left_coords):
-        reference_descriptors = self.get_corresponding_descriptors(reference_embeddings, left_coords)
 
-        ref_expanded = reference_descriptors.unsqueeze(-1)      
-        target_flat = self.flatten_embeddings(target_embeddings)
+    def get_best_match_indices(self, target_flat, reference_embeddings, left_coords):
+        reference_descriptors = self.get_corresponding_descriptors(reference_embeddings, left_coords)
+        ref_expanded = reference_descriptors.unsqueeze(-1)
         
         distances = torch.sqrt(torch.sum((ref_expanded - target_flat) ** 2, dim=2)) 
         best_match_indices = torch.argmin(distances, dim=-1)  
+        
+        return best_match_indices
+                
+    def match_keypoints(self, reference_embeddings, target_embeddings, left_coords):
+        target_flat = self.flatten_embeddings(target_embeddings)
+        best_match_indices = self.get_best_match_indices(target_flat, reference_embeddings, left_coords)  
 
         # torch.Size([2, 5, 128, 1024])
-        a, b, c, _ = target_flat.size
-        batch_indices = torch.arange(a).view(-1, 1, 1) 
-        patch_indices = torch.arange(b).view(1, -1, 1)  
-        channel_indices = torch.arange(c).view(1, 1, -1)
+        batch_indices = torch.arange(target_flat.size(0)).view(-1, 1, 1) 
+        patch_indices = torch.arange(target_flat.size(1)).view(1, -1, 1)  
+        channel_indices = torch.arange(target_flat.size(2)).view(1, 1, -1)
         
         best_matching_descriptors = target_flat[
             batch_indices,                              
@@ -116,12 +119,12 @@ class KeypointMatcherModel:
             best_match_indices.unsqueeze(-1)            
         ] 
 
-        return best_match_indices, best_matching_descriptors
+        # Calculate the closest row and column from the flattened index
+        height, width = target_embeddings.shape[-2], target_embeddings.shape[-1]
+        closest_row = best_match_indices // width
+        closest_col = best_match_indices % width
 
-        # # Calculate the closest row and column from the flattened index
-        # height, width = target_embeddings.shape[-2], target_embeddings.shape[-1]
-        # closest_row = best_match_indices // width
-        # closest_col = best_match_indices % width
+        closest_coords = torch.stack((closest_row, closest_col), dim=-1)
 
-        # return (closest_row.item(), closest_col.item())
+        return closest_coords, best_matching_descriptors
 

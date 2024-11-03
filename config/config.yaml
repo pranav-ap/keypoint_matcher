@@ -5,7 +5,6 @@ dirs:
     output: ${dirs.root}/keypoint_matcher/output
     output_val_images: ${dirs.output}/val_images
     output_test_images: ${dirs.output}/test_images
-    
 
 image_size: [520, 520]  # [420, 540]  [250, 340]
 patch_size: 32
@@ -14,10 +13,9 @@ train:
     images: ${dirs.root}/datasets/euroc/V1_01_easy/mav0/cam0/data
     matches: ${dirs.root}/keypoint_matcher/data/matches/V1_01_easy/matches
     
-    train_batch_size: 2
-    val_batch_size: 2
-
-    max_per_image: 5
+    train_batch_size: 4
+    val_batch_size: 4
+    max_per_image: 10
 
     max_epochs: 5
     check_val_every_n_epoch: 1
@@ -30,6 +28,6 @@ test:
     images: ${dirs.root}/datasets/euroc/V2_01_easy/mav0/cam0/data
     matches: ${dirs.root}/keypoint_matcher/data/matches/V2_01_easy/matches
     
-    batch_size: 2
-    max_per_image: 5
+    batch_size: 4
+    max_per_image: 10
 
