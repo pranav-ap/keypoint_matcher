@@ -3,8 +3,11 @@ log_level: TRACE  # TRACE WARNING
 dirs:
     root: /home/stud/ath/ath_ws
     output: ${dirs.root}/keypoint_matcher/output
+    output_val_images: ${dirs.output}/val_images
+    output_test_images: ${dirs.output}/test_images
+    
 
-image_size: [420, 540]  # [420, 540]  [250, 340]
+image_size: [520, 520]  # [420, 540]  [250, 340]
 patch_size: 32
 
 train:

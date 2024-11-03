@@ -4,7 +4,7 @@ import os
 import torch
 import random
 import lightning as L
-from PIL import Image
+from PIL import Image, ImageDraw
 from typing import Optional
 from torchvision import transforms as T
 
@@ -21,79 +21,122 @@ def load_tensor(folder_path: str, filename: str) -> torch.tensor:
 
 class MatchesDataset(torch.utils.data.Dataset):
     # noinspection PyTypeChecker
-    def __init__(self, images_dir, matches_dir, matches_filenames, subset, transform, max_per_image=None):
-        self.subset = subset
-        self.transform = transform
+    def __init__(self, images_dir, matches_dir, matches_filenames, max_per_image=None):
         self.max_per_image = max_per_image
 
         self.images_dir = images_dir
         self.matches_dir = matches_dir
         self.matches_filenames = matches_filenames
 
+        w, h = config.image_size
+        self.transform_pil = T.Compose([
+            T.Resize((w, h)),
+            T.Grayscale(),
+        ])
+        
+        self.transform_tensor = T.Compose([
+            T.ToTensor(),
+            T.ConvertImageDtype(torch.float),
+            # T.Normalize(mean=[0.5], std=[0.5]),
+        ])
+
     def __len__(self):
         return len(self.matches_filenames)
 
-    def _get_items(self, idx):
+    def _get_coords(self, idx):
         matches_filename = self.matches_filenames[idx]
         matches = load_tensor(self.matches_dir, matches_filename)
 
         left_coords = [(int(x), int(y)) for x, y in matches[:, :2]]
         right_coords = [(int(x), int(y)) for x, y in matches[:, 2:]]
         assert len(left_coords) == len(right_coords)
-
+        
         if self.max_per_image is not None:
             sample_indices = random.sample(range(len(left_coords)), min(self.max_per_image, len(left_coords)))
             left_coords = [left_coords[i] for i in sample_indices]
             right_coords = [right_coords[i] for i in sample_indices]
 
-        left_coords = torch.tensor(left_coords)
-        right_coords = torch.tensor(right_coords)
-        
+        return left_coords, right_coords
+
+    def _get_images(self, idx):
+        matches_filename = self.matches_filenames[idx]
         matches_filename, _ = matches_filename.split('.')
         reference_image_name, target_image_name, _ = matches_filename.split('_')
 
         reference_image_path = os.path.join(self.images_dir, f'{reference_image_name}.png')
-        logger.debug(reference_image_path)        
         assert os.path.exists(reference_image_path)
         target_image_path = os.path.join(self.images_dir, f'{target_image_name}.png')
         assert os.path.exists(target_image_path)
-
+        
         reference_image = Image.open(reference_image_path).convert("RGB")
         target_image = Image.open(target_image_path).convert("RGB")
 
-        reference_image = self.transform(reference_image)
-        target_image = self.transform(target_image)
-
-        return left_coords, right_coords, reference_image, target_image
-
-    @staticmethod
-    def _get_patches(image, coords):
-        patches = []
-
-        width, height = config.image_size
-        half_size = config.patch_size // 2
-
+        reference_image = self.transform_pil(reference_image) 
+        target_image = self.transform_pil(target_image) 
+        
+        return reference_image, target_image
+        
+    def _get_patches(self, image, coords, perturb=False):
+        patches, adjusted_coords = [], []
+        patch_size = config.patch_size
+        half_size = patch_size // 2
+    
         for x, y in coords:
-            # Calculate initial bounding box
-            left = max(0, x - half_size)
-            upper = max(0, y - half_size)
-            right = min(width, x + half_size)
-            lower = min(height, y + half_size)
+            original_x, original_y = x, y
+    
+            if perturb:
+                perturb_x = random.randint(-half_size // 2, half_size // 2)
+                perturb_y = random.randint(-half_size // 2, half_size // 2)
+                x += perturb_x
+                y += perturb_y
+    
+            x = min(max(x, half_size), image.width - half_size - 1)
+            y = min(max(y, half_size), image.height - half_size - 1)
+    
+            left = x - half_size
+            upper = y - half_size
+    
+            if left < 0:
+                left = 0
+            elif left + patch_size > image.width:
+                left = image.width - patch_size - 5
+            
+            if upper < 0:
+                upper = 0
+            elif upper + patch_size > image.height:
+                upper = image.height - patch_size - 5
+    
+            right = left + patch_size
+            lower = upper + patch_size
 
-            # Crop the patch from the image
             patch = image.crop((left, upper, right, lower))
-            patches.append(patch)
-
-        return patches
+    
+            # Calculate the relative coordinates within the patch, keeping the original pixel
+            rel_x = min(max(original_x - left, 0), patch_size - 1)
+            rel_y = min(max(original_y - upper, 0), patch_size - 1)            
+            adjusted_coords.append((rel_x, rel_y))
+    
+            draw = ImageDraw.Draw(patch)
+            radius = 3
+            draw.ellipse((rel_x - radius, rel_y - radius, rel_x + radius, rel_y + radius), outline="red")
+    
+            patch_tensor = self.transform_tensor(patch)
+            patches.append(patch_tensor)
+    
+        patches = torch.stack(patches).squeeze()
+        adjusted_coords = torch.tensor(adjusted_coords)
+    
+        return patches, adjusted_coords
 
     def __getitem__(self, idx):
-        left_coords, right_coords, reference_image, target_image = self._get_items(idx)
-
-        reference_patches = self._get_patches(reference_image, left_coords)
-        target_patches = self._get_patches(target_image, right_coords)
-        assert len(reference_patches) == len(target_patches)
-
-        return left_coords, right_coords, reference_patches, target_patches
+        left_coords, right_coords = self._get_coords(idx)        
+        reference_image, target_image = self._get_images(idx)
+                       
+        reference_patches, left_coordsp = self._get_patches(reference_image, left_coords)
+        target_patches, right_coordsp = self._get_patches(target_image, right_coords, perturb=True)
+        assert reference_patches.shape == target_patches.shape
+        
+        return left_coordsp, right_coordsp, reference_patches, target_patches
 
 
 class MatchesDataModule(L.LightningDataModule):
@@ -101,24 +144,6 @@ class MatchesDataModule(L.LightningDataModule):
         super().__init__()
 
         self.num_workers = os.cpu_count()
-
-        w, h = config.image_size
-
-        self.train_transform = T.Compose([
-            T.Resize((w, h)),
-            T.Grayscale(),
-            T.ToTensor(),
-            T.ConvertImageDtype(torch.float),
-            T.Normalize(mean=[0.5], std=[0.5]),
-        ])
-
-        self.test_transform = T.Compose([
-            T.Resize((w, h)),
-            T.Grayscale(),
-            T.ToTensor(),
-            T.ConvertImageDtype(torch.float),
-            T.Normalize(mean=[0.5], std=[0.5]),
-        ])
 
         self.train_dataset: Optional[MatchesDataset] = None
         self.val_dataset: Optional[MatchesDataset] = None
@@ -133,8 +158,6 @@ class MatchesDataModule(L.LightningDataModule):
                 images_dir=config.train.images,
                 matches_dir=config.train.matches,
                 matches_filenames=matches_filenames[:30],
-                subset="train",
-                transform=self.train_transform,
                 max_per_image=config.train.max_per_image
             )
 
@@ -142,8 +165,6 @@ class MatchesDataModule(L.LightningDataModule):
                 images_dir=config.train.images,
                 matches_dir=config.train.matches,
                 matches_filenames=matches_filenames[30:],
-                subset="validate",
-                transform=self.test_transform,
                 max_per_image=config.train.max_per_image
             )
 
@@ -152,14 +173,12 @@ class MatchesDataModule(L.LightningDataModule):
 
         if stage == "test":
             matches_filenames = sorted(os.listdir(config.test.matches))
-            matches_filenames = random.sample(matches_filenames, 10)
+            matches_filenames = random.sample(matches_filenames, 20)
             
             self.test_dataset = MatchesDataset(
                 images_dir=config.test.images,
                 matches_dir=config.test.matches,
                 matches_filenames=matches_filenames,
-                subset="test",
-                transform=self.test_transform,
                 max_per_image=config.test.max_per_image
             )
 

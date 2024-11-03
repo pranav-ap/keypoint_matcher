@@ -3,8 +3,8 @@ from utils import logger
 import torch
 import lightning as L
 import lightning.pytorch as pl
-from model import KeypointMatcherModel
-from light import KeypointMatcherLightning
+from model import KeypointDescriptorModel
+from light import KeypointDescriptorLightning
 from dataset import MatchesDataModule
 
 torch.set_float32_matmul_precision('medium')
@@ -14,8 +14,8 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Using device: {device}")
 
-    model = KeypointMatcherModel().to(device)
-    lightning_model = KeypointMatcherLightning(model)
+    model = KeypointDescriptorModel().to(device)
+    lightning_model = KeypointDescriptorLightning(model)
     dm = MatchesDataModule()
 
     trainer = pl.Trainer(

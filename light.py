@@ -11,7 +11,7 @@ from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, TQDMProg
 torch.set_float32_matmul_precision('medium')
 
 
-class KeypointMatcherLightning(pl.LightningModule):
+class KeypointDescriptorLightning(pl.LightningModule):
     def __init__(self, model):
         super().__init__()
 
@@ -23,30 +23,29 @@ class KeypointMatcherLightning(pl.LightningModule):
         self.learning_rate = config.train.learning_rate
         self.save_hyperparameters(ignore=['model'])
 
-        os.makedirs(config.dirs.test_images, exist_ok=True)
-        os.makedirs(config.dirs.val_images, exist_ok=True)
+        os.makedirs(config.dirs.output_test_images, exist_ok=True)
+        os.makedirs(config.dirs.output_val_images, exist_ok=True)
 
     def forward(self, patches):
         return self.model(patches)
 
     @staticmethod
-    def contrastive_loss(reference_embeddings, target_embeddings, labels):
-        distances = F.pairwise_distance(reference_embeddings, target_embeddings)
-
-        positive_loss = labels * torch.pow(distances, 2)  # Positive pairs should be close
+    def contrastive_loss(reference_embeddings, target_embeddings, left_coords, right_coords, labels):
+        reference_keypoints = reference_embeddings[torch.arange(reference_embeddings.shape[0]), :, left_coords[:, 0], left_coords[:, 1]]
+        target_keypoints = target_embeddings[torch.arange(target_embeddings.shape[0]), :, right_coords[:, 0], right_coords[:, 1]]
+        
+        distances = F.pairwise_distance(reference_keypoints, target_keypoints)
+        
+        positive_loss = labels * torch.pow(distances, 2)
         margin = 1
-        negative_loss = (1 - labels) * torch.pow(torch.clamp(margin - distances, min=0), 2)  # Negative pairs should be far
+        negative_loss = (1 - labels) * torch.pow(torch.clamp(margin - distances, min=0), 2) 
 
         return torch.mean(positive_loss + negative_loss)
 
-    def compute_loss(self, reference_embeddings, target_embeddings):
-        # Calculate loss for the key matching pixels
-        keypoint_loss = self.contrastive_loss(reference_embeddings, target_embeddings)
-
-        # Calculate a dense loss across all pixels in the patch
+    def compute_loss(self, reference_embeddings, target_embeddings, left_coords, right_coords, labels):
+        keypoint_loss = self.contrastive_loss(reference_embeddings, target_embeddings, left_coords, right_coords, labels)
         patch_loss = F.mse_loss(reference_embeddings, target_embeddings)
 
-        # Combine losses with a higher weight on the keypoint loss
         alpha = 0.8
         total_loss = alpha * keypoint_loss + (1 - alpha) * patch_loss
 
@@ -64,7 +63,7 @@ class KeypointMatcherLightning(pl.LightningModule):
         reference_embeddings = self.model(reference_patches)
         target_embeddings = self.model(target_patches)
         
-        loss = self.compute_loss(reference_embeddings, target_embeddings, labels)
+        loss = self.compute_loss(reference_embeddings, target_embeddings, left_coords, right_coords, labels)
         self.log(f"train_loss", loss, prog_bar=True, on_epoch=True, on_step=False)
         
         return loss
@@ -78,7 +77,7 @@ class KeypointMatcherLightning(pl.LightningModule):
 
         labels = [1] * len(left_coords)
 
-        loss = self.compute_loss(reference_embeddings, target_embeddings, labels)
+        loss = self.compute_loss(reference_embeddings, target_embeddings, left_coords, right_coords, labels)
         self.log("val_loss", loss, prog_bar=True, on_epoch=True, on_step=False)
 
         return loss
@@ -92,7 +91,7 @@ class KeypointMatcherLightning(pl.LightningModule):
 
         labels = [1] * len(left_coords)
 
-        loss = self.compute_loss(reference_embeddings, target_embeddings, labels)
+        loss = self.compute_loss(reference_embeddings, target_embeddings, left_coords, right_coords, labels)
         self.log("test_loss", loss, prog_bar=True, on_epoch=True, on_step=False)
 
         return loss
