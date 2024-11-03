@@ -37,7 +37,7 @@ class MatchesDataset(torch.utils.data.Dataset):
         self.transform_tensor = T.Compose([
             T.ToTensor(),
             T.ConvertImageDtype(torch.float),
-            # T.Normalize(mean=[0.5], std=[0.5]),
+            T.Normalize(mean=[0.5], std=[0.5]),
         ])
 
     def __len__(self):
@@ -111,7 +111,6 @@ class MatchesDataset(torch.utils.data.Dataset):
 
             patch = image.crop((left, upper, right, lower))
     
-            # Calculate the relative coordinates within the patch, keeping the original pixel
             rel_x = min(max(original_x - left, 0), patch_size - 1)
             rel_y = min(max(original_y - upper, 0), patch_size - 1)            
             adjusted_coords.append((rel_x, rel_y))
@@ -123,7 +122,7 @@ class MatchesDataset(torch.utils.data.Dataset):
             patch_tensor = self.transform_tensor(patch)
             patches.append(patch_tensor)
     
-        patches = torch.stack(patches).squeeze()
+        patches = torch.stack(patches) # .squeeze()
         adjusted_coords = torch.tensor(adjusted_coords)
     
         return patches, adjusted_coords

@@ -36,7 +36,7 @@ class KeypointDescriptorModel(nn.Module):
         super().__init__()
 
         self.encoder = nn.Sequential(
-            ResidualBlock(10, 32, dilation=1),
+            ResidualBlock(1, 32, dilation=1),
             ResidualBlock(32, 64, dilation=2),
             ResidualBlock(64, 128, dilation=4),
             ResidualBlock(128, embedding_dim, dilation=8),
@@ -44,6 +44,12 @@ class KeypointDescriptorModel(nn.Module):
 
     def forward(self, patches):
         logger.debug(f"Input shape: {patches.shape}")
+        
+        batch_size, num_patches, channels, height, width = patches.shape
+        # Shape: [2 * 5, 1, 32, 32]
+        patches = patches.view(batch_size * num_patches, channels, height, width) 
+        logger.debug(f"After Reshape : {patches.shape}")
+        
         x = self.encoder[0](patches)
         logger.debug(f"After ResidualBlock 1 : {x.shape}")
         x = self.encoder[1](x)
@@ -53,64 +59,69 @@ class KeypointDescriptorModel(nn.Module):
         x = self.encoder[3](x)
         logger.debug(f"After ResidualBlock 4 : {x.shape}")
         
-        # Output is a dense feature map where each pixel has an embedding vector of size `embedding_dim`
-        # Shape: (batch, embedding_dim, H, W), same H, W as the input image
+        # Reshape back to separate batch and patch dimensions
+        # Shape: [2, 5, 128, 32, 32]
+        # [batch_size, num_patches, embedding_dim, height, width]
+        x = x.view(batch_size, num_patches, -1, height, width)  
+        logger.debug(f"After Reshape : {x.shape}")
+        
         return x
-
 
 
 class KeypointMatcherModel:
     @staticmethod
-    def match_keypoint_by_distance(reference_embeddings, target_embeddings, keypoint_coords):
-        # Extract the reference keypoint embedding
-        ref_keypoint = reference_embeddings[:, keypoint_coords[0], keypoint_coords[1]].view(1, -1)  # Shape (1, C)
+    def flatten_embeddings(embeddings):
+        im_count, pat_count, e, h, w = embeddings.shape
+        target_flat = embeddings.view(im_count, pat_count, e, -1)
+        return target_flat
+    
+    @staticmethod
+    def get_corresponding_descriptors(embeddings, coords):
+        im_count, pat_count, _, _, _ = embeddings.shape
+        
+        rows = coords[..., 0]  # Shape [2, 5]
+        cols = coords[..., 1]  # Shape [2, 5]
+        
+        descriptors = embeddings[
+            torch.arange(im_count).view(-1, 1, 1),
+            torch.arange(pat_count).view(1, -1, 1),
+            :,  # Channel dimension, selects all channels
+            rows.unsqueeze(-1),  # Row indices Shape [2, 5, 1]
+            cols.unsqueeze(-1)   # Column indices Shape [2, 5, 1]
+        ]
+        
+        descriptors = descriptors.squeeze(2)
+    
+        return descriptors
+        
+    def match_keypoint(self, reference_embeddings, target_embeddings, left_coords):
+        reference_descriptors = self.get_corresponding_descriptors(reference_embeddings, left_coords)
 
-        # Shape (C, H*W)
-        target_flat = target_embeddings.view(target_embeddings.shape[0], -1)  
-    
-        # Compute distances between the reference keypoint and all points in the target patch
-        distances = F.pairwise_distance(ref_keypoint, target_flat.T)
-        min_idx = torch.argmin(distances)
-    
-        # Convert the flattened index back to 2D coordinates
-        height, width = target_embeddings.shape[1:]
-        closest_row = min_idx // width
-        closest_col = min_idx % width
-    
-        return (closest_row.item(), closest_col.item())
-    
-    def match_keypoints_all_batches(reference_embeddings, target_embeddings, keypoint_coords):
-        """
-        Match a specific keypoint in the reference embeddings to the closest keypoint in the target embeddings
-        for all batches, based on distance in the embedding space.
-    
-        Args:
-            reference_embeddings (torch.Tensor): Tensor of shape (N, C, H, W) representing the reference embeddings.
-            target_embeddings (torch.Tensor): Tensor of shape (N, C, H, W) representing the target embeddings.
-            keypoint_coords (tuple): Coordinates of the keypoint in the reference embeddings (row, col).
-    
-        Returns:
-            list of tuples: Coordinates of the closest matching keypoint in the target embeddings for each batch (row, col).
-        """
-        batch_size, channels, height, width = reference_embeddings.shape
-        closest_matches = []
-    
-        for i in range(batch_size):
-            # Extract the reference keypoint embedding for the current batch
-            ref_keypoint = reference_embeddings[i, :, keypoint_coords[0], keypoint_coords[1]].view(1, -1)  # Shape (1, C)
-    
-            # Flatten the target patch spatial dimensions to compute distance to each location
-            target_flat = target_embeddings[i].view(channels, -1)  # Shape (C, H*W)
-    
-            # Compute distances between the reference keypoint and all points in the target patch
-            distances = F.pairwise_distance(ref_keypoint, target_flat.T)
-            min_idx = torch.argmin(distances)
-    
-            # Convert the flattened index back to 2D coordinates
-            closest_row = min_idx // width
-            closest_col = min_idx % width
-    
-            closest_matches.append((closest_row.item(), closest_col.item()))
-    
-        return closest_matches
+        ref_expanded = reference_descriptors.unsqueeze(-1)      
+        target_flat = self.flatten_embeddings(target_embeddings)
+        
+        distances = torch.sqrt(torch.sum((ref_expanded - target_flat) ** 2, dim=2)) 
+        best_match_indices = torch.argmin(distances, dim=-1)  
+
+        # torch.Size([2, 5, 128, 1024])
+        a, b, c, _ = target_flat.size
+        batch_indices = torch.arange(a).view(-1, 1, 1) 
+        patch_indices = torch.arange(b).view(1, -1, 1)  
+        channel_indices = torch.arange(c).view(1, 1, -1)
+        
+        best_matching_descriptors = target_flat[
+            batch_indices,                              
+            patch_indices,                              
+            channel_indices,                            
+            best_match_indices.unsqueeze(-1)            
+        ] 
+
+        return best_match_indices, best_matching_descriptors
+
+        # # Calculate the closest row and column from the flattened index
+        # height, width = target_embeddings.shape[-2], target_embeddings.shape[-1]
+        # closest_row = best_match_indices // width
+        # closest_col = best_match_indices % width
+
+        # return (closest_row.item(), closest_col.item())
 

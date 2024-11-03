@@ -1,4 +1,4 @@
-from utils import logger
+from utils import logger, make_clear_directory
 from config import config
 import numpy as np
 import os
@@ -23,48 +23,24 @@ class KeypointDescriptorLightning(pl.LightningModule):
         self.learning_rate = config.train.learning_rate
         self.save_hyperparameters(ignore=['model'])
 
-        os.makedirs(config.dirs.output_test_images, exist_ok=True)
-        os.makedirs(config.dirs.output_val_images, exist_ok=True)
-
+        make_clear_directory(config.dirs.output_val_images)
+        make_clear_directory(config.dirs.output_test_images)
+        
     def forward(self, patches):
         return self.model(patches)
 
-    @staticmethod
-    def contrastive_loss(reference_embeddings, target_embeddings, left_coords, right_coords, labels):
-        reference_keypoints = reference_embeddings[torch.arange(reference_embeddings.shape[0]), :, left_coords[:, 0], left_coords[:, 1]]
-        target_keypoints = target_embeddings[torch.arange(target_embeddings.shape[0]), :, right_coords[:, 0], right_coords[:, 1]]
-        
-        distances = F.pairwise_distance(reference_keypoints, target_keypoints)
-        
-        positive_loss = labels * torch.pow(distances, 2)
-        margin = 1
-        negative_loss = (1 - labels) * torch.pow(torch.clamp(margin - distances, min=0), 2) 
-
-        return torch.mean(positive_loss + negative_loss)
-
-    def compute_loss(self, reference_embeddings, target_embeddings, left_coords, right_coords, labels):
-        keypoint_loss = self.contrastive_loss(reference_embeddings, target_embeddings, left_coords, right_coords, labels)
+    def compute_loss(self, reference_embeddings, target_embeddings):
         patch_loss = F.mse_loss(reference_embeddings, target_embeddings)
-
-        alpha = 0.8
-        total_loss = alpha * keypoint_loss + (1 - alpha) * patch_loss
-
-        return total_loss
+        return patch_loss
 
     def training_step(self, batch, batch_idx):
         left_coords, right_coords, reference_patches, target_patches = batch
 
-        shuffled_right_coords = np.copy(right_coords)
-        np.random.shuffle(shuffled_right_coords)
-
-        labels = right_coords != shuffled_right_coords
-        labels = labels.astype(int)
-
         reference_embeddings = self.model(reference_patches)
         target_embeddings = self.model(target_patches)
         
-        loss = self.compute_loss(reference_embeddings, target_embeddings, left_coords, right_coords, labels)
-        self.log(f"train_loss", loss, prog_bar=True, on_epoch=True, on_step=False)
+        loss = self.compute_loss(reference_embeddings, target_embeddings)
+        self.log("train_loss", loss, prog_bar=True, on_epoch=True, on_step=False)
         
         return loss
 
@@ -75,9 +51,7 @@ class KeypointDescriptorLightning(pl.LightningModule):
         reference_embeddings = self.model(reference_patches)
         target_embeddings = self.model(target_patches)
 
-        labels = [1] * len(left_coords)
-
-        loss = self.compute_loss(reference_embeddings, target_embeddings, left_coords, right_coords, labels)
+        loss = self.compute_loss(reference_embeddings, target_embeddings)
         self.log("val_loss", loss, prog_bar=True, on_epoch=True, on_step=False)
 
         return loss
@@ -89,9 +63,7 @@ class KeypointDescriptorLightning(pl.LightningModule):
         reference_embeddings = self.model(reference_patches)
         target_embeddings = self.model(target_patches)
 
-        labels = [1] * len(left_coords)
-
-        loss = self.compute_loss(reference_embeddings, target_embeddings, left_coords, right_coords, labels)
+        loss = self.compute_loss(reference_embeddings, target_embeddings)
         self.log("test_loss", loss, prog_bar=True, on_epoch=True, on_step=False)
 
         return loss

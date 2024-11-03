@@ -14,13 +14,13 @@ train:
     images: ${dirs.root}/datasets/euroc/V1_01_easy/mav0/cam0/data
     matches: ${dirs.root}/keypoint_matcher/data/matches/V1_01_easy/matches
     
-    train_batch_size: 4
-    val_batch_size: 4
+    train_batch_size: 2
+    val_batch_size: 2
 
-    max_per_image: 10
+    max_per_image: 5
 
     max_epochs: 5
-    check_val_every_n_epoch: 10
+    check_val_every_n_epoch: 1
     num_sanity_val_steps: 1
     log_every_n_steps: 25
     accumulate_grad_batches: 2
@@ -30,6 +30,6 @@ test:
     images: ${dirs.root}/datasets/euroc/V2_01_easy/mav0/cam0/data
     matches: ${dirs.root}/keypoint_matcher/data/matches/V2_01_easy/matches
     
-    batch_size: 4
-    max_per_image: 10
+    batch_size: 2
+    max_per_image: 5
 
