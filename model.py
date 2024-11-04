@@ -126,5 +126,5 @@ class KeypointMatcherModel:
 
         closest_coords = torch.stack((closest_row, closest_col), dim=-1)
 
-        return closest_coords, best_matching_descriptors
+        return closest_coords
 

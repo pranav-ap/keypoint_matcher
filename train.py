@@ -3,7 +3,6 @@ from utils import logger
 import torch
 import lightning as L
 import lightning.pytorch as pl
-from model import KeypointDescriptorModel
 from light import KeypointDescriptorLightning
 from dataset import MatchesDataModule
 
@@ -13,9 +12,8 @@ torch.set_float32_matmul_precision('medium')
 def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Using device: {device}")
-
-    model = KeypointDescriptorModel().to(device)
-    lightning_model = KeypointDescriptorLightning(model)
+    
+    lightning_model = KeypointDescriptorLightning()
     dm = MatchesDataModule()
 
     trainer = pl.Trainer(
@@ -30,7 +28,7 @@ def main():
         num_sanity_val_steps=config.train.num_sanity_val_steps,
         enable_model_summary=False,
         # fast_dev_run=True,
-        # overfit_batches=2,        
+        # overfit_batches=2,
     )
     
     trainer.fit(lightning_model, datamodule=dm)
@@ -38,7 +36,7 @@ def main():
     if trainer.checkpoint_callback.best_model_path:
         logger.info(f"Best model path : {trainer.checkpoint_callback.best_model_path}")
 
-    # trainer.test(lightning_model, datamodule=dm)
+    trainer.test(lightning_model, datamodule=dm)
 
 
 if __name__ == '__main__':

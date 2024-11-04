@@ -75,8 +75,8 @@ class MatchesDataset(torch.utils.data.Dataset):
         target_image = self.transform_pil(target_image) 
         
         return reference_image, target_image
-        
-    def _get_patches(self, image, coords, perturb=False):
+            
+    def _get_patches(self, image, coords, perturb=False, draw=False):
         patches, adjusted_coords = [], []
         patch_size = config.patch_size
         half_size = patch_size // 2
@@ -85,54 +85,48 @@ class MatchesDataset(torch.utils.data.Dataset):
             original_x, original_y = x, y
     
             if perturb:
-                perturb_x = random.randint(-half_size // 2, half_size // 2)
-                perturb_y = random.randint(-half_size // 2, half_size // 2)
+                perturb_size = half_size - 5
+                perturb_x = random.randint(-perturb_size, perturb_size)
+                perturb_y = random.randint(-perturb_size, perturb_size)
                 x += perturb_x
                 y += perturb_y
     
+            # Ensure x and y are within bounds after perturbation
             x = min(max(x, half_size), image.width - half_size - 1)
             y = min(max(y, half_size), image.height - half_size - 1)
     
-            left = x - half_size
-            upper = y - half_size
-    
-            if left < 0:
-                left = 0
-            elif left + patch_size > image.width:
-                left = image.width - patch_size - 5
-            
-            if upper < 0:
-                upper = 0
-            elif upper + patch_size > image.height:
-                upper = image.height - patch_size - 5
-    
+            # Calculate patch boundaries with clamping
+            left = max(0, min(x - half_size, image.width - patch_size))
+            upper = max(0, min(y - half_size, image.height - patch_size))
             right = left + patch_size
             lower = upper + patch_size
 
             patch = image.crop((left, upper, right, lower))
     
             rel_x = min(max(original_x - left, 0), patch_size - 1)
-            rel_y = min(max(original_y - upper, 0), patch_size - 1)            
+            rel_y = min(max(original_y - upper, 0), patch_size - 1)
             adjusted_coords.append((rel_x, rel_y))
+
+            if draw:
+                draw_im = ImageDraw.Draw(patch)
+                radius = 2
+                draw_im.ellipse((rel_x - radius, rel_y - radius, rel_x + radius, rel_y + radius), outline="red")
     
-            draw = ImageDraw.Draw(patch)
-            radius = 3
-            draw.ellipse((rel_x - radius, rel_y - radius, rel_x + radius, rel_y + radius), outline="red")
-    
+            # Convert patch to tensor
             patch_tensor = self.transform_tensor(patch)
             patches.append(patch_tensor)
     
-        patches = torch.stack(patches) # .squeeze()
+        patches = torch.stack(patches)
         adjusted_coords = torch.tensor(adjusted_coords)
-    
+        
         return patches, adjusted_coords
-
+    
     def __getitem__(self, idx):
         left_coords, right_coords = self._get_coords(idx)        
         reference_image, target_image = self._get_images(idx)
                        
-        reference_patches, left_coordsp = self._get_patches(reference_image, left_coords)
-        target_patches, right_coordsp = self._get_patches(target_image, right_coords, perturb=True)
+        reference_patches, left_coordsp = self._get_patches(reference_image, left_coords, draw=False)
+        target_patches, right_coordsp = self._get_patches(target_image, right_coords, perturb=True, draw=False)
         assert reference_patches.shape == target_patches.shape
         
         return left_coordsp, right_coordsp, reference_patches, target_patches
@@ -151,19 +145,22 @@ class MatchesDataModule(L.LightningDataModule):
     def setup(self, stage=None):        
         if stage == "fit" or stage == "validate":
             matches_filenames = sorted(os.listdir(config.train.matches))
-            matches_filenames = random.sample(matches_filenames, 50)
+            random.shuffle(matches_filenames)
+            total_matches = len(matches_filenames)
+            logger.info(f'Fit & Validate Total Matches : {total_matches}')
+            train_split = int(total_matches * 0.6) 
             
             self.train_dataset = MatchesDataset(
                 images_dir=config.train.images,
                 matches_dir=config.train.matches,
-                matches_filenames=matches_filenames[:30],
+                matches_filenames=matches_filenames[:train_split],
                 max_per_image=config.train.max_per_image
             )
 
             self.val_dataset = MatchesDataset(
                 images_dir=config.train.images,
                 matches_dir=config.train.matches,
-                matches_filenames=matches_filenames[30:],
+                matches_filenames=matches_filenames[train_split:],
                 max_per_image=config.train.max_per_image
             )
 
@@ -172,7 +169,7 @@ class MatchesDataModule(L.LightningDataModule):
 
         if stage == "test":
             matches_filenames = sorted(os.listdir(config.test.matches))
-            matches_filenames = random.sample(matches_filenames, 20)
+            logger.info(f'Test Total Matches : {len(matches_filenames)}')
             
             self.test_dataset = MatchesDataset(
                 images_dir=config.test.images,

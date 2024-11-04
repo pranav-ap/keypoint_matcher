@@ -1,4 +1,4 @@
-log_level: TRACE  # TRACE WARNING
+log_level: WARNING  # TRACE WARNING
 
 dirs:
     root: /home/stud/ath/ath_ws
@@ -15,13 +15,14 @@ train:
     
     train_batch_size: 4
     val_batch_size: 4
-    max_per_image: 10
+    max_per_image: 30
 
-    max_epochs: 5
-    check_val_every_n_epoch: 1
+    max_epochs: 50
+    check_val_every_n_epoch: 3
+    patience: 5
     num_sanity_val_steps: 1
     log_every_n_steps: 25
-    accumulate_grad_batches: 2
+    accumulate_grad_batches: 1
     learning_rate: 1e-4
 
 test:
@@ -29,5 +30,5 @@ test:
     matches: ${dirs.root}/keypoint_matcher/data/matches/V2_01_easy/matches
     
     batch_size: 4
-    max_per_image: 10
+    max_per_image: 50
 
