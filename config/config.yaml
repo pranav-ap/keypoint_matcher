@@ -20,7 +20,7 @@ train:
     val_batch_size: 4
     max_per_image: 20
 
-    max_epochs: 25
+    max_epochs: 15
     check_val_every_n_epoch: 3
     patience: 5
     num_sanity_val_steps: 1

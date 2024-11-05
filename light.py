@@ -48,7 +48,10 @@ class KeypointDescriptorLightning(pl.LightningModule):
 
         reference_embeddings = self.descriptor_model(reference_patches)
         target_embeddings = self.descriptor_model(target_patches)
-        
+    
+        reference_embeddings = F.normalize(reference_embeddings, p=2, dim=2)
+        target_embeddings = F.normalize(target_embeddings, p=2, dim=2)
+
         loss = self.compute_loss(reference_embeddings, target_embeddings, left_coords_pa, right_coords_pa)
         self.log("train_loss", loss, prog_bar=True, on_epoch=True, on_step=False)
         
@@ -60,6 +63,9 @@ class KeypointDescriptorLightning(pl.LightningModule):
 
         reference_embeddings = self.descriptor_model(reference_patches)
         target_embeddings = self.descriptor_model(target_patches)
+    
+        reference_embeddings = F.normalize(reference_embeddings, p=2, dim=2)
+        target_embeddings = F.normalize(target_embeddings, p=2, dim=2)
 
         loss = self.compute_loss(reference_embeddings, target_embeddings, left_coords_pa, right_coords_pa)
         self.log("val_loss", loss, prog_bar=True, on_epoch=True, on_step=False)
@@ -72,6 +78,9 @@ class KeypointDescriptorLightning(pl.LightningModule):
 
         reference_embeddings = self.descriptor_model(reference_patches)
         target_embeddings = self.descriptor_model(target_patches)
+    
+        reference_embeddings = F.normalize(reference_embeddings, p=2, dim=2)
+        target_embeddings = F.normalize(target_embeddings, p=2, dim=2)
 
         loss = self.compute_loss(reference_embeddings, target_embeddings, left_coords_pa, right_coords_pa)
         self.log("test_loss", loss, prog_bar=True, on_epoch=True, on_step=False)
