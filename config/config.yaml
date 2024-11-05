@@ -1,5 +1,8 @@
 log_level: WARNING  # TRACE WARNING
 
+fast_dev_run: False
+overfit_batches: 0.0
+
 dirs:
     root: /home/stud/ath/ath_ws
     output: ${dirs.root}/keypoint_matcher/output
@@ -15,9 +18,9 @@ train:
     
     train_batch_size: 4
     val_batch_size: 4
-    max_per_image: 30
+    max_per_image: 20
 
-    max_epochs: 50
+    max_epochs: 25
     check_val_every_n_epoch: 3
     patience: 5
     num_sanity_val_steps: 1
@@ -30,5 +33,5 @@ test:
     matches: ${dirs.root}/keypoint_matcher/data/matches/V2_01_easy/matches
     
     batch_size: 4
-    max_per_image: 50
+    max_per_image: 20
 

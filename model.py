@@ -94,8 +94,8 @@ class KeypointMatcherModel:
     
         return descriptors
 
-    def get_best_match_indices(self, target_flat, reference_embeddings, left_coords):
-        reference_descriptors = self.get_corresponding_descriptors(reference_embeddings, left_coords)
+    def get_best_match_indices(self, target_flat, reference_embeddings, left_coords_pa):
+        reference_descriptors = self.get_corresponding_descriptors(reference_embeddings, left_coords_pa)
         ref_expanded = reference_descriptors.unsqueeze(-1)
         
         distances = torch.sqrt(torch.sum((ref_expanded - target_flat) ** 2, dim=2)) 
@@ -103,9 +103,9 @@ class KeypointMatcherModel:
         
         return best_match_indices
                 
-    def match_keypoints(self, reference_embeddings, target_embeddings, left_coords):
+    def match_keypoints(self, reference_embeddings, target_embeddings, left_coords_pa):
         target_flat = self.flatten_embeddings(target_embeddings)
-        best_match_indices = self.get_best_match_indices(target_flat, reference_embeddings, left_coords)  
+        best_match_indices = self.get_best_match_indices(target_flat, reference_embeddings, left_coords_pa)  
 
         # torch.Size([2, 5, 128, 1024])
         batch_indices = torch.arange(target_flat.size(0)).view(-1, 1, 1) 

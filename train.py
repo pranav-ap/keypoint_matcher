@@ -27,8 +27,8 @@ def main():
         accumulate_grad_batches=config.train.accumulate_grad_batches,
         num_sanity_val_steps=config.train.num_sanity_val_steps,
         enable_model_summary=False,
-        # fast_dev_run=True,
-        # overfit_batches=2,
+        fast_dev_run=config.fast_dev_run,
+        overfit_batches=config.overfit_batches,
     )
     
     trainer.fit(lightning_model, datamodule=dm)

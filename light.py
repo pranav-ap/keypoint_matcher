@@ -29,10 +29,10 @@ class KeypointDescriptorLightning(pl.LightningModule):
         make_clear_directory(config.dirs.output_val_images)
         make_clear_directory(config.dirs.output_test_images)
         
-    def compute_loss2(self, reference_embeddings, target_embeddings, left_coords, right_coords):
+    def compute_loss2(self, reference_embeddings, target_embeddings, left_coords_pa, right_coords_pa):
         patch_loss = F.mse_loss(reference_embeddings, target_embeddings)
-        target_coords_p = self.matcher_model.match_keypoints(reference_embeddings, target_embeddings, left_coords)
-        match_loss = F.mse_loss(right_coords.float(), target_coords_p.float())
+        target_coords_pa_pred = self.matcher_model.match_keypoints(reference_embeddings, target_embeddings, left_coords_pa)
+        match_loss = F.mse_loss(right_coords_pa.float(), target_coords_pa_pred.float())
 
         alpha = 0.5
         total_loss = alpha * match_loss + (1 - alpha) * patch_loss
@@ -44,36 +44,36 @@ class KeypointDescriptorLightning(pl.LightningModule):
         return patch_loss
         
     def training_step(self, batch, batch_idx):
-        left_coords, right_coords, reference_patches, target_patches = batch
+        left_coords_im, right_coords_im, left_coords_pa, right_coords_pa, reference_patches, target_patches = batch
 
         reference_embeddings = self.descriptor_model(reference_patches)
         target_embeddings = self.descriptor_model(target_patches)
         
-        loss = self.compute_loss2(reference_embeddings, target_embeddings, left_coords, right_coords)
+        loss = self.compute_loss(reference_embeddings, target_embeddings, left_coords_pa, right_coords_pa)
         self.log("train_loss", loss, prog_bar=True, on_epoch=True, on_step=False)
         
         return loss
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):
-        left_coords, right_coords, reference_patches, target_patches = batch
+        left_coords_im, right_coords_im, left_coords_pa, right_coords_pa, reference_patches, target_patches = batch
 
         reference_embeddings = self.descriptor_model(reference_patches)
         target_embeddings = self.descriptor_model(target_patches)
 
-        loss = self.compute_loss(reference_embeddings, target_embeddings, left_coords, right_coords)
+        loss = self.compute_loss(reference_embeddings, target_embeddings, left_coords_pa, right_coords_pa)
         self.log("val_loss", loss, prog_bar=True, on_epoch=True, on_step=False)
 
         return loss
 
     @torch.no_grad()
     def test_step(self, batch, batch_idx):
-        left_coords, right_coords, reference_patches, target_patches = batch
+        left_coords_im, right_coords_im, left_coords_pa, right_coords_pa, reference_patches, target_patches = batch
 
         reference_embeddings = self.descriptor_model(reference_patches)
         target_embeddings = self.descriptor_model(target_patches)
 
-        loss = self.compute_loss(reference_embeddings, target_embeddings, left_coords, right_coords)
+        loss = self.compute_loss(reference_embeddings, target_embeddings, left_coords_pa, right_coords_pa)
         self.log("test_loss", loss, prog_bar=True, on_epoch=True, on_step=False)
 
         return loss

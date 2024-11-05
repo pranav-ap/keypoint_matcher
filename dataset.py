@@ -112,24 +112,26 @@ class MatchesDataset(torch.utils.data.Dataset):
                 radius = 2
                 draw_im.ellipse((rel_x - radius, rel_y - radius, rel_x + radius, rel_y + radius), outline="red")
     
-            # Convert patch to tensor
             patch_tensor = self.transform_tensor(patch)
             patches.append(patch_tensor)
     
-        patches = torch.stack(patches)
-        adjusted_coords = torch.tensor(adjusted_coords)
+        patches = torch.stack(patches).contiguous() 
+        adjusted_coords = torch.tensor(adjusted_coords).contiguous() 
         
         return patches, adjusted_coords
     
     def __getitem__(self, idx):
-        left_coords, right_coords = self._get_coords(idx)        
+        left_coords_im, right_coords_im = self._get_coords(idx)        
         reference_image, target_image = self._get_images(idx)
                        
-        reference_patches, left_coordsp = self._get_patches(reference_image, left_coords, draw=False)
-        target_patches, right_coordsp = self._get_patches(target_image, right_coords, perturb=True, draw=False)
+        reference_patches, left_coords_pa = self._get_patches(reference_image, left_coords_im, draw=True)
+        target_patches, right_coords_pa = self._get_patches(target_image, right_coords_im, perturb=True, draw=True)
         assert reference_patches.shape == target_patches.shape
         
-        return left_coordsp, right_coordsp, reference_patches, target_patches
+        left_coords_im = torch.tensor(left_coords_im).contiguous()
+        right_coords_im = torch.tensor(right_coords_im).contiguous()     
+        
+        return left_coords_im, right_coords_im, left_coords_pa, right_coords_pa, reference_patches, target_patches
 
 
 class MatchesDataModule(L.LightningDataModule):
@@ -147,7 +149,6 @@ class MatchesDataModule(L.LightningDataModule):
             matches_filenames = sorted(os.listdir(config.train.matches))
             random.shuffle(matches_filenames)
             total_matches = len(matches_filenames)
-            logger.info(f'Fit & Validate Total Matches : {total_matches}')
             train_split = int(total_matches * 0.6) 
             
             self.train_dataset = MatchesDataset(
