@@ -6,9 +6,9 @@ from collections import OrderedDict
 import h5py
 import lightning as L
 import torch
-import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 from torchvision import transforms as T
+import albumentations as A
 
 from config import config
 from utils import logger
@@ -25,20 +25,29 @@ class Match:
     image_level_reference_coords: Optional[torch.Tensor] = None
     image_level_target_coords: Optional[torch.Tensor] = None
 
-    # patch_level_reference_coords: Optional[torch.Tensor | np.array] = None
-    # patch_level_target_coords: Optional[torch.Tensor | np.array] = None
+    patch_level_reference_coords: Optional[torch.Tensor] = None
+    patch_level_target_coords: Optional[torch.Tensor] = None
 
 
 def match_collate_fn(batch):
+    channel = 3
     reference_patches = torch.stack([match.reference_patches for match in batch])
-    target_patches = torch.stack([match.target_patches for match in batch])
-    image_level_reference_coords = torch.stack([match.image_level_reference_coords for match in batch])
-    image_level_target_coords = torch.stack([match.image_level_target_coords for match in batch])
+    reference_patches = reference_patches.reshape(-1, channel, config.image.patch_size, config.image.patch_size)
 
-    reference_patches = reference_patches.reshape(-1, 1, config.image.patch_size, config.image.patch_size)
-    target_patches = target_patches.reshape(-1, 1, config.image.patch_size, config.image.patch_size)
+    target_patches = torch.stack([match.target_patches for match in batch])
+    target_patches = target_patches.reshape(-1, channel, config.image.patch_size, config.image.patch_size)
+
+    image_level_reference_coords = torch.stack([match.image_level_reference_coords for match in batch])
     image_level_reference_coords = image_level_reference_coords.reshape(-1, 2)
+
+    image_level_target_coords = torch.stack([match.image_level_target_coords for match in batch])
     image_level_target_coords = image_level_target_coords.reshape(-1, 2)
+
+    patch_level_reference_coords = torch.stack([match.patch_level_reference_coords for match in batch])
+    patch_level_reference_coords = patch_level_reference_coords.reshape(-1, 2)
+
+    patch_level_target_coords = torch.stack([match.patch_level_target_coords for match in batch])
+    patch_level_target_coords = patch_level_target_coords.reshape(-1, 2)
 
     return Match(
         reference_patches=reference_patches,
@@ -46,6 +55,9 @@ def match_collate_fn(batch):
 
         image_level_reference_coords=image_level_reference_coords,
         image_level_target_coords=image_level_target_coords,
+
+        patch_level_reference_coords=patch_level_reference_coords,
+        patch_level_target_coords=patch_level_target_coords,
     )
 
 
@@ -70,7 +82,7 @@ class MatchesDataset(torch.utils.data.Dataset):
     @staticmethod
     def _get_image(image_name):
         image_path = os.path.join(config.paths.images, f'{image_name}.png')
-        image = Image.open(image_path).convert("L")
+        image = Image.open(image_path).convert("RGB")
         return image
 
     def _get_items(self, idx, match: Match):
@@ -79,7 +91,7 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         match.image_level_reference_coords = torch.from_numpy(self.references_group[pair_name][()][selected_indices])
         match.image_level_target_coords = torch.from_numpy(self.targets_group[pair_name][()][selected_indices])
-        assert len(match.image_level_reference_coords) == len(match.image_level_target_coords)
+        # assert match.image_level_reference_coords.shape == match.image_level_target_coords.shape
 
         reference_image_name, target_image_name = pair_name.split('_')
 
@@ -131,31 +143,93 @@ class MatchesDataset(torch.utils.data.Dataset):
         y += perturb_y
 
         left += perturb_x
-        y += perturb_y
-        x += perturb_x
-        y += perturb_y
+        upper += perturb_y
 
-    def _prepare_patches(self, image, coords, perturb=False, draw=False):
+        if left < 0:
+            right += -left
+            left = 0
+        elif right > width:
+            left -= right - width
+            right = width
+
+        if upper < 0:
+            lower += -upper
+            upper = 0
+        elif lower > height:
+            upper -= lower - height
+            lower = height
+
+        return x, y, left, upper, right, lower
+
+    def _prepare_patches1(self, image, image_level_coords, perturb=False, draw=False):
         patches = []
+        patch_level_coords = []
 
-        for x, y in coords:
-            x, y = x.item(), y.item()
+        patch_size = config.image.patch_size
+        padding = patch_size // 2 - 5
+
+        for x, y in image_level_coords:
+            image_level_x, image_level_y = x.item(), y.item()
+            # original_x, original_y = x, y
             left, upper, right, lower = self._get_patch_dims(x, y)
 
-            if perturb:
-                self._perturb(x, y, left, upper, right, lower)
+            # if perturb:
+            #     x, y, left, upper, right, lower = self._perturb(x, y, left, upper, right, lower)
+
+            patch_level_x = min(max(x - left, 0), patch_size - 1)
+            patch_level_y = min(max(y - upper, 0), patch_size - 1)
+            patch_level_coords.append((patch_level_x, patch_level_y))
 
             patch = image.crop((left, upper, right, lower))
 
+            if draw:
+                draw_im = ImageDraw.Draw(patch)
+                radius = 2
+                draw_im.ellipse((patch_level_x - radius, patch_level_y - radius, patch_level_x + radius, patch_level_y + radius), outline="red")
+
             if self.patch_transform:
                 patch = self.patch_transform(patch)
-                # patch = patch.squeeze()
 
             patches.append(patch)
 
         patches = torch.stack(patches)
+        patch_level_coords = torch.tensor(patch_level_coords, dtype=torch.int32)
 
-        return patches
+        return patches, patch_level_coords
+
+    def _prepare_patches(self, image, image_level_coords, perturb=False, draw=False):
+        patches = []
+        patch_level_coords = []
+        patch_size = config.image.patch_size
+
+        for x, y in image_level_coords:
+            x, y = x.item(), y.item()
+            # original_x, original_y = x, y
+            left, upper, right, lower = self._get_patch_dims(x, y)
+
+            # if perturb:
+            #     x, y, left, upper, right, lower = self._perturb(x, y, left, upper, right, lower)
+
+            patch_level_x = min(max(x - left, 0), patch_size - 1)
+            patch_level_y = min(max(y - upper, 0), patch_size - 1)
+            patch_level_coords.append((patch_level_x, patch_level_y))
+
+            patch = image.crop((left, upper, right, lower))
+
+            if draw:
+                draw_im = ImageDraw.Draw(patch)
+                radius = 2
+                draw_im.ellipse((patch_level_x - radius, patch_level_y - radius, patch_level_x + radius, patch_level_y + radius), outline="red")
+
+            if self.patch_transform:
+                patch = self.patch_transform(patch)
+
+            patches.append(patch)
+
+        patches = torch.stack(patches)
+        patch_level_coords = torch.tensor(patch_level_coords, dtype=torch.int32)
+
+        return patches, patch_level_coords
 
     def __getitem__(self, idx):
         if not hasattr(self, 'file'):
@@ -164,8 +238,10 @@ class MatchesDataset(torch.utils.data.Dataset):
         match = Match()
         reference_image, target_image = self._get_items(idx, match)
 
-        match.reference_patches = self._prepare_patches(reference_image, match.image_level_reference_coords)
-        match.target_patches = self._prepare_patches(target_image, match.image_level_target_coords)
+        patches, patch_level_coords = self._prepare_patches(reference_image, match.image_level_reference_coords, draw=True)
+        match.reference_patches, match.patch_level_reference_coords = patches, patch_level_coords
+        patches, patch_level_coords = self._prepare_patches(target_image, match.image_level_target_coords, draw=True)
+        match.target_patches, match.patch_level_target_coords = patches, patch_level_coords
 
         return match
 
