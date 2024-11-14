@@ -46,8 +46,6 @@ class MatchesDataset(torch.utils.data.Dataset):
         reference_coords = self.references_group[pair_name][()][selected_indices]
         target_coords = self.targets_group[pair_name][()][selected_indices]
 
-        logger.info(reference_coords)
-
         assert len(reference_coords) == len(target_coords)
 
         reference_image_name, target_image_name = pair_name.split('_')
@@ -68,19 +66,34 @@ class MatchesDataset(torch.utils.data.Dataset):
         half_size = config.image.patch_size // 2
 
         for x, y in coords:
-            # Calculate initial bounding box
-            left = max(0, x - half_size)
-            upper = max(0, y - half_size)
-            right = min(width, x + half_size)
-            lower = min(height, y + half_size)
+            left = x - half_size
+            upper = y - half_size
+            right = x + half_size
+            lower = y + half_size
 
-            # Crop the patch from the image
+            if left < 0:
+                right += -left
+                left = 0
+            elif right > width:
+                left -= right - width
+                right = width
+
+            if upper < 0:
+                lower += -upper
+                upper = 0
+            elif lower > height:
+                upper -= lower - height
+                lower = height
+
             patch = image.crop((left, upper, right, lower))
 
             if self.patch_transform:
                 patch = self.patch_transform(patch)
+                patch = patch.squeeze()
 
             patches.append(patch)
+
+        patches = torch.stack(patches)
 
         return patches
 
