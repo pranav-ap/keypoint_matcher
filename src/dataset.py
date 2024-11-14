@@ -1,3 +1,4 @@
+import math
 import os
 import random
 from typing import Dict, Optional
@@ -111,7 +112,7 @@ class MatchesDataset(torch.utils.data.Dataset):
         return reference_image, target_image
 
     @staticmethod
-    def _get_patch_boundary(image, keypoint, patch_size):
+    def _get_patch_boundary(image: Image.Image, keypoint, patch_size):
         image_width, image_height = image.size
         x, y = keypoint
         half_patch_size = patch_size // 2
@@ -141,7 +142,7 @@ class MatchesDataset(torch.utils.data.Dataset):
         return left, upper, right, lower
 
     @staticmethod
-    def _center_crop(image, keypoint, left, upper, right, lower):
+    def _center_crop(image: Image.Image, keypoint, left, upper, right, lower):
         transform = A.Compose(
             transforms=[
                 A.Crop(
@@ -166,27 +167,69 @@ class MatchesDataset(torch.utils.data.Dataset):
         return patch, keypoint
 
     @staticmethod
-    def _random_crop(image, keypoint, patch_size):
-        image_width, image_height = image.size
+    def _random_crop(patch: Image.Image, keypoint, desired_patch_size):
+        width, height = patch.size
         x, y = keypoint
-        half_patch_size = patch_size // 2
+        half_patch_size = desired_patch_size // 2
 
-        crop_left = random.randint(max(0, x - half_patch_size), min(image_width - patch_size, x + half_patch_size))
-        crop_top = random.randint(max(0, y - half_patch_size), min(image_height - patch_size, y + half_patch_size))
-        crop_right = crop_left + patch_size
-        crop_bottom = crop_top + patch_size
+        perturb_size = half_patch_size - 5
+        perturb_x = random.randint(-perturb_size, perturb_size)
+        perturb_y = random.randint(-perturb_size, perturb_size)
+
+        center_x = x + perturb_x
+        center_y = y + perturb_y
+
+        left, right = center_x - half_patch_size, center_x + half_patch_size
+        upper, lower = center_y - half_patch_size, center_y + half_patch_size
+
+        if left < 0:
+            right += -left
+            left = 0
+        elif right > width:
+            left -= right - width
+            right = width
+
+        if upper < 0:
+            lower += -upper
+            upper = 0
+        elif lower > height:
+            upper -= lower - height
+            lower = height
 
         transform = A.Compose(
             transforms=[
                 A.Crop(
-                    x_min=crop_left, y_min=crop_top,
-                    x_max=crop_right, y_max=crop_bottom
+                    x_min=left, y_min=upper,
+                    x_max=right, y_max=lower
                 ),
             ],
             keypoint_params=A.KeypointParams(format='xy')
         )
 
-        transformed = transform(image=np.array(image), keypoints=[keypoint])
+        transformed = transform(image=np.array(patch), keypoints=[keypoint])
+
+        patch = Image.fromarray(transformed['image'])
+        assert patch.size[0] == patch.size[1]
+
+        keypoints = transformed['keypoints']
+        assert len(keypoints) == 1
+        keypoint = int(keypoints[0][0]), int(keypoints[0][1])
+
+        return patch, keypoint
+
+    @staticmethod
+    def _random_crop_old(patch, keypoint, desired_patch_size):
+        transform = A.Compose(
+            transforms=[
+                A.RandomCrop(
+                    width=desired_patch_size,
+                    height=desired_patch_size
+                ),
+            ],
+            keypoint_params=A.KeypointParams(format='xy')
+        )
+
+        transformed = transform(image=np.array(patch), keypoints=[keypoint])
 
         patch = Image.fromarray(transformed['image'])
         assert patch.size[0] == patch.size[1]
@@ -203,7 +246,8 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         image_width, image_height = image.size
         desired_patch_size = config.image.patch_size
-        padded_patch_size = desired_patch_size + 6  # (desired_patch_size // 3 - 5)
+        # padded_patch_size = desired_patch_size + (desired_patch_size // 2)
+        padded_patch_size = 2 * desired_patch_size - 2
 
         if not perturb:
             padded_patch_size = desired_patch_size
@@ -220,7 +264,7 @@ class MatchesDataset(torch.utils.data.Dataset):
             patch, keypoint = self._center_crop(image, keypoint, left, upper, right, lower)
 
             if perturb:
-                patch, keypoint = self._random_crop(image, keypoint, desired_patch_size)
+                patch, keypoint = self._random_crop_old(patch, keypoint, desired_patch_size)
 
             if self.draw_keypoint:
                 draw_im = ImageDraw.Draw(patch)
@@ -249,18 +293,19 @@ class MatchesDataset(torch.utils.data.Dataset):
         patches, patch_level_coords = self._prepare_patches(reference_image, match.image_level_reference_coords)
         match.reference_patches, match.patch_level_reference_coords = patches, patch_level_coords
 
-        patches, patch_level_coords = self._prepare_patches(target_image, match.image_level_target_coords, perturb=False)
+        patches, patch_level_coords = self._prepare_patches(target_image, match.image_level_target_coords, perturb=True)
         match.target_patches, match.patch_level_target_coords = patches, patch_level_coords
 
         return match
 
 
 class MatchesDataModule(L.LightningDataModule):
-    def __init__(self, draw_keypoint=False):
+    def __init__(self):
         super().__init__()
 
-        self.num_workers = os.cpu_count()
-        self.draw_keypoint = draw_keypoint
+        self.num_workers = 0 if config.task.eda_mode else os.cpu_count()
+        self.persistent_workers = not config.task.eda_mode
+        self.draw_keypoint = config.task.eda_mode
 
         self.image_transform = T.Compose([])
         self.patch_transform = T.Compose([
@@ -346,7 +391,7 @@ class MatchesDataModule(L.LightningDataModule):
             batch_size=config.train.train_batch_size,
             shuffle=True,
             num_workers=self.num_workers,
-            persistent_workers=True,
+            persistent_workers=self.persistent_workers,
             pin_memory=True,
             collate_fn=match_collate_fn
         )
@@ -357,7 +402,7 @@ class MatchesDataModule(L.LightningDataModule):
             batch_size=config.train.val_batch_size,
             shuffle=False,
             num_workers=self.num_workers,
-            persistent_workers=True,
+            persistent_workers=self.persistent_workers,
             pin_memory=True,
             collate_fn=match_collate_fn
         )
@@ -368,7 +413,7 @@ class MatchesDataModule(L.LightningDataModule):
             batch_size=config.test.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
-            persistent_workers=True,
+            persistent_workers=self.persistent_workers,
             pin_memory=True,
             collate_fn=match_collate_fn
         )
