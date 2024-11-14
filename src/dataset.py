@@ -35,8 +35,8 @@ def match_collate_fn(batch):
     image_level_reference_coords = torch.stack([match.image_level_reference_coords for match in batch])
     image_level_target_coords = torch.stack([match.image_level_target_coords for match in batch])
 
-    reference_patches = reference_patches.reshape(-1, config.image.patch_size, config.image.patch_size)
-    target_patches = target_patches.reshape(-1, config.image.patch_size, config.image.patch_size)
+    reference_patches = reference_patches.reshape(-1, 1, config.image.patch_size, config.image.patch_size)
+    target_patches = target_patches.reshape(-1, 1, config.image.patch_size, config.image.patch_size)
     image_level_reference_coords = image_level_reference_coords.reshape(-1, 2)
     image_level_target_coords = image_level_target_coords.reshape(-1, 2)
 
@@ -77,8 +77,8 @@ class MatchesDataset(torch.utils.data.Dataset):
         pair_name = self.pair_names[idx]
         selected_indices = self.selected_indices[pair_name]
 
-        match.image_level_reference_coords = self.references_group[pair_name][()][selected_indices]
-        match.image_level_target_coords = self.targets_group[pair_name][()][selected_indices]
+        match.image_level_reference_coords = torch.from_numpy(self.references_group[pair_name][()][selected_indices])
+        match.image_level_target_coords = torch.from_numpy(self.targets_group[pair_name][()][selected_indices])
         assert len(match.image_level_reference_coords) == len(match.image_level_target_coords)
 
         reference_image_name, target_image_name = pair_name.split('_')
@@ -139,6 +139,7 @@ class MatchesDataset(torch.utils.data.Dataset):
         patches = []
 
         for x, y in coords:
+            x, y = x.item(), y.item()
             left, upper, right, lower = self._get_patch_dims(x, y)
 
             if perturb:
@@ -148,7 +149,7 @@ class MatchesDataset(torch.utils.data.Dataset):
 
             if self.patch_transform:
                 patch = self.patch_transform(patch)
-                patch = patch.squeeze()
+                # patch = patch.squeeze()
 
             patches.append(patch)
 
@@ -165,9 +166,6 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         match.reference_patches = self._prepare_patches(reference_image, match.image_level_reference_coords)
         match.target_patches = self._prepare_patches(target_image, match.image_level_target_coords)
-
-        match.image_level_reference_coords = torch.from_numpy(match.image_level_reference_coords)
-        match.image_level_target_coords = torch.from_numpy(match.image_level_target_coords)
 
         return match
 
