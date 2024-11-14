@@ -1,7 +1,9 @@
-from config import config
 import sys
-from loguru import logger
 import warnings
+
+from loguru import logger
+
+from config import config
 
 
 def setup_logging():

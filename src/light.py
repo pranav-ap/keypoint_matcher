@@ -1,12 +1,14 @@
-from utils import logger
-from config import config
-import numpy as np
 import os
+
+import lightning.pytorch as pl
+import numpy as np
 import torch
 import torch.nn.functional as F
-import lightning.pytorch as pl
-from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, TQDMProgressBar, LearningRateMonitor
+from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint, TQDMProgressBar
 
+from config import config
+from utils import logger
+from .model import DescriptorModel
 
 torch.set_float32_matmul_precision('medium')
 
@@ -15,7 +17,7 @@ class KeypointMatcherLightning(pl.LightningModule):
     def __init__(self, model):
         super().__init__()
 
-        self.model = model
+        self.model = DescriptorModel()
 
         total_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         logger.info(f"Number of Trainable Parameters : {total_trainable_params}")
@@ -35,7 +37,8 @@ class KeypointMatcherLightning(pl.LightningModule):
 
         positive_loss = labels * torch.pow(distances, 2)  # Positive pairs should be close
         margin = 1
-        negative_loss = (1 - labels) * torch.pow(torch.clamp(margin - distances, min=0), 2)  # Negative pairs should be far
+        negative_loss = (1 - labels) * torch.pow(torch.clamp(margin - distances, min=0),
+                                                 2)  # Negative pairs should be far
 
         return torch.mean(positive_loss + negative_loss)
 
@@ -63,10 +66,10 @@ class KeypointMatcherLightning(pl.LightningModule):
 
         reference_embeddings = self.model(reference_patches)
         target_embeddings = self.model(target_patches)
-        
+
         loss = self.compute_loss(reference_embeddings, target_embeddings, labels)
         self.log(f"train_loss", loss, prog_bar=True, on_epoch=True, on_step=False)
-        
+
         return loss
 
     @torch.no_grad()

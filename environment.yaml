@@ -1,0 +1,26 @@
+name: common_env
+channels:
+    - defaults
+    - conda-forge
+dependencies:
+    - python=3.12
+    - pip
+    - numpy
+    - pandas
+    - matplotlib
+    - pillow
+    - seaborn
+    - scikit-learn
+    - scikit-image
+    - loguru
+    - tqdm
+    - hydra-core
+    - jupyterlab
+    - jupyter
+    - h5py
+    - lightning
+    - diffusers
+    - datasets
+    - pip:
+        - opencv-python
+        

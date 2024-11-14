@@ -1,11 +1,10 @@
-from config import config
-from utils import logger
-import torch
 import lightning as L
 import lightning.pytorch as pl
-from model import KeypointMatcherModel
-from light import KeypointMatcherLightning
-from dataset import MatchesDataModule
+import torch
+
+from config import config
+from src import KeypointMatcherLightning, MatchesDataModule
+from utils import logger
 
 torch.set_float32_matmul_precision('medium')
 
@@ -14,9 +13,11 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Using device: {device}")
 
-    model = KeypointMatcherModel().to(device)
-    lightning_model = KeypointMatcherLightning(model)
+    light = KeypointMatcherLightning()
     dm = MatchesDataModule()
+
+    # checkpoint_path = ''
+    # light = KeypointMatcherLightning.load_from_checkpoint(checkpoint_path)
 
     trainer = pl.Trainer(
         default_root_dir=config.dirs.output,
@@ -29,16 +30,16 @@ def main():
         accumulate_grad_batches=config.train.accumulate_grad_batches,
         num_sanity_val_steps=config.train.num_sanity_val_steps,
         enable_model_summary=False,
-        # fast_dev_run=True,
-        # overfit_batches=2,        
+        fast_dev_run=config.train.fast_dev_run,
+        overfit_batches=config.train.overfit_batches,
     )
-    
-    trainer.fit(lightning_model, datamodule=dm)
+
+    trainer.fit(light, datamodule=dm)
 
     if trainer.checkpoint_callback.best_model_path:
         logger.info(f"Best model path : {trainer.checkpoint_callback.best_model_path}")
 
-    # trainer.test(lightning_model, datamodule=dm)
+    # trainer.test(light, datamodule=dm)
 
 
 if __name__ == '__main__':

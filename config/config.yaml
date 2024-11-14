@@ -1,17 +1,34 @@
-log_level: WARNING  # TRACE WARNING
+log_level: TRACE  # TRACE WARNING
 
-dirs:
-    train_images: /home/stud/ath/ath_ws/data
-    output: /home/stud/ath/ath_ws/keypoint_matcher/output
-    test_images: ${dirs.output}/test_images
-    val_images: ${dirs.output}/val_images
+task:
+    dataset: monado_slam
+    track: MOO07_mapping_easy
+    cam: cam0
 
-image_size: [250, 340]  # [420, 540]
-patch_size: 32
+    single_mode: True
+
+paths:
+    roots:
+        ws: D:/thesis_code # /home/stud/ath/ath_ws  D:/thesis_code
+        mav: ${paths.roots.ws}/datasets/${task.dataset}/${task.track}/mav0
+        project: ${paths.roots.ws}/keypoint_matcher
+        output: ${paths.roots.project}/output
+
+    matches: ${paths.roots.ws}/keypoint_dataset_pipeline/output/train/training_data.hdf5
+    images: ${paths.roots.mav}/${task.cam}/data
+
+image:
+    # [width, height]
+    original_image_shape: [640, 480]  # [640, 480]
+    patch_size: 32
 
 train:
     train_batch_size: 4
     val_batch_size: 4
+    num_patches_per_image: 20
+
+    fast_dev_run: False
+    overfit_batches: 0
 
     max_epochs: 100
     check_val_every_n_epoch: 10

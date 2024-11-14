@@ -1,7 +1,8 @@
-from utils import logger
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from utils import logger
 
 torch.set_float32_matmul_precision('medium')
 
@@ -15,7 +16,8 @@ class ResidualBlock(nn.Module):
         self.batch_norm2 = nn.BatchNorm2d(out_channels)
 
         # Skip connection
-        self.skip_connection = nn.Conv2d(in_channels, out_channels, kernel_size=1) if in_channels != out_channels else None
+        self.skip_connection = nn.Conv2d(in_channels, out_channels,
+                                         kernel_size=1) if in_channels != out_channels else None
 
     def forward(self, x):
         identity = x
@@ -32,15 +34,15 @@ class ResidualBlock(nn.Module):
         return out
 
 
-class KeypointMatcherModel(nn.Module):
+class DescriptorModel(nn.Module):
     def __init__(self, embedding_dim=128):
         super().__init__()
 
         self.encoder = nn.Sequential(
             ResidualBlock(1, 64, dilation=1),
-            ResidualBlock(64, 128, dilation=2),
-            ResidualBlock(128, 256, dilation=4),
-            ResidualBlock(256, embedding_dim, dilation=8),
+            ResidualBlock(64, 128),
+            ResidualBlock(128, 256),
+            ResidualBlock(256, embedding_dim),
         )
 
     def forward(self, patches):
