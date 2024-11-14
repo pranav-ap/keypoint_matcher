@@ -22,6 +22,7 @@ image:
     # [width, height]
     original_image_shape: [640, 480]  # [640, 480]
     patch_size: 32
+    patch_border: 2 # 2 pixels
 
 train:
     train_batch_size: 4

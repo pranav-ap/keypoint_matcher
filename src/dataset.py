@@ -167,58 +167,7 @@ class MatchesDataset(torch.utils.data.Dataset):
         return patch, keypoint
 
     @staticmethod
-    def _random_crop(patch: Image.Image, keypoint, desired_patch_size):
-        width, height = patch.size
-        x, y = keypoint
-        half_patch_size = desired_patch_size // 2
-
-        perturb_size = half_patch_size - 5
-        perturb_x = random.randint(-perturb_size, perturb_size)
-        perturb_y = random.randint(-perturb_size, perturb_size)
-
-        center_x = x + perturb_x
-        center_y = y + perturb_y
-
-        left, right = center_x - half_patch_size, center_x + half_patch_size
-        upper, lower = center_y - half_patch_size, center_y + half_patch_size
-
-        if left < 0:
-            right += -left
-            left = 0
-        elif right > width:
-            left -= right - width
-            right = width
-
-        if upper < 0:
-            lower += -upper
-            upper = 0
-        elif lower > height:
-            upper -= lower - height
-            lower = height
-
-        transform = A.Compose(
-            transforms=[
-                A.Crop(
-                    x_min=left, y_min=upper,
-                    x_max=right, y_max=lower
-                ),
-            ],
-            keypoint_params=A.KeypointParams(format='xy')
-        )
-
-        transformed = transform(image=np.array(patch), keypoints=[keypoint])
-
-        patch = Image.fromarray(transformed['image'])
-        assert patch.size[0] == patch.size[1]
-
-        keypoints = transformed['keypoints']
-        assert len(keypoints) == 1
-        keypoint = int(keypoints[0][0]), int(keypoints[0][1])
-
-        return patch, keypoint
-
-    @staticmethod
-    def _random_crop_old(patch, keypoint, desired_patch_size):
+    def _random_crop(patch, keypoint, desired_patch_size):
         transform = A.Compose(
             transforms=[
                 A.RandomCrop(
@@ -246,8 +195,7 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         image_width, image_height = image.size
         desired_patch_size = config.image.patch_size
-        # padded_patch_size = desired_patch_size + (desired_patch_size // 2)
-        padded_patch_size = 2 * desired_patch_size - 2
+        padded_patch_size = 2 * desired_patch_size - config.image.patch_border
 
         if not perturb:
             padded_patch_size = desired_patch_size
@@ -264,7 +212,7 @@ class MatchesDataset(torch.utils.data.Dataset):
             patch, keypoint = self._center_crop(image, keypoint, left, upper, right, lower)
 
             if perturb:
-                patch, keypoint = self._random_crop_old(patch, keypoint, desired_patch_size)
+                patch, keypoint = self._random_crop(patch, keypoint, desired_patch_size)
 
             if self.draw_keypoint:
                 draw_im = ImageDraw.Draw(patch)
