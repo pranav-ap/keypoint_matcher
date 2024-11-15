@@ -1,3 +1,3 @@
 from .dataset import MatchesDataModule
-from .light import KeypointMatcherLightning
+from .light import Light
 from .model import DescriptorModel

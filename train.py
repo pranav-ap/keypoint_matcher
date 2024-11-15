@@ -3,7 +3,7 @@ import lightning.pytorch as pl
 import torch
 
 from config import config
-from src import KeypointMatcherLightning, MatchesDataModule
+from src import Light, MatchesDataModule
 from utils import logger
 
 torch.set_float32_matmul_precision('medium')
@@ -13,15 +13,15 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Using device: {device}")
 
-    light = KeypointMatcherLightning()
+    light = Light()
     dm = MatchesDataModule()
 
     # checkpoint_path = ''
-    # light = KeypointMatcherLightning.load_from_checkpoint(checkpoint_path)
+    # light = Light.load_from_checkpoint(checkpoint_path)
 
     trainer = pl.Trainer(
-        default_root_dir=config.dirs.output,
-        logger=L.pytorch.loggers.CSVLogger(save_dir=config.dirs.output),
+        default_root_dir=config.paths.output,
+        logger=L.pytorch.loggers.TensorBoardLogger(save_dir=config.paths.output),
         devices='auto',
         accelerator="auto",
         max_epochs=config.train.max_epochs,
@@ -38,8 +38,6 @@ def main():
 
     if trainer.checkpoint_callback.best_model_path:
         logger.info(f"Best model path : {trainer.checkpoint_callback.best_model_path}")
-
-    # trainer.test(light, datamodule=dm)
 
 
 if __name__ == '__main__':

@@ -15,14 +15,14 @@ paths:
         project: ${paths.roots.ws}/keypoint_matcher
         output: ${paths.roots.project}/output
 
-    matches: ${paths.roots.ws}/keypoint_dataset_pipeline/output/train/training_data.hdf5
+    matches: ${paths.roots.ws}/keypoint_dataset_pipeline/output/train/train_data.hdf5
     images: ${paths.roots.mav}/${task.cam}/data
 
 image:
     # [width, height]
     original_image_shape: [640, 480]  # [640, 480]
     patch_size: 32
-    patch_border: 4 # pixels
+    patch_border: 2 # pixels
 
 train:
     train_batch_size: 4

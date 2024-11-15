@@ -17,14 +17,15 @@ def show_batch(reference_patches, target_patches, patch_level_reference_coords, 
         num_patches = min(limit_count, num_patches)
 
     patch_size = 128
+    extra_col_gap = 0
     radius = 1
 
     num_rows = (num_patches + n_columns - 1) // n_columns
 
-    combined_width = n_columns * (patch_size * 2 + border_size * 4)
+    combined_width = n_columns * (patch_size * 2 + border_size * 4) + (n_columns - 1) * extra_col_gap
     combined_height = num_rows * (patch_size + border_size * 2)
 
-    combined_image = Image.new('RGB', (combined_width, combined_height))
+    combined_image = Image.new('RGB', (combined_width, combined_height), color=(255, 255, 255))
 
     def prepare_patch(patch, x, y, color):
         patch = denormalize(patch)
@@ -48,7 +49,7 @@ def show_batch(reference_patches, target_patches, patch_level_reference_coords, 
         col = i % n_columns
 
         y = row * (patch_size + 2 * border_size)
-        x1 = col * (patch_size * 2 + border_size * 4)
+        x1 = col * (patch_size * 2 + border_size * 4) + col * extra_col_gap
         x2 = x1 + patch_size + 2 * border_size
 
         combined_image.paste(reference_patch, (x1, y))

@@ -1,17 +1,16 @@
 import lightning.pytorch as pl
-import numpy as np
 import torch
 import torch.nn.functional as F
 from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint, TQDMProgressBar
 
 from config import config
-from utils import logger, make_clear_directory
+from utils import make_clear_directory
 from .model import DescriptorModel
 
 torch.set_float32_matmul_precision('medium')
 
 
-class KeypointMatcherLightning(pl.LightningModule):
+class Light(pl.LightningModule):
     def __init__(self):
         super().__init__()
 
@@ -93,7 +92,7 @@ class KeypointMatcherLightning(pl.LightningModule):
         checkpoint_callback = ModelCheckpoint(
             monitor='val_loss',
             mode='min',
-            dirpath=f'{config.dirs.output}/checkpoints/',
+            dirpath=f'{config.paths.output}/checkpoints/',
             filename="best-checkpoint",
             save_top_k=1,
             save_last=True,

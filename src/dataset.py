@@ -9,7 +9,7 @@ import h5py
 import lightning as L
 import numpy as np
 import torch
-from PIL import Image, ImageDraw
+from PIL import Image
 from torchvision import transforms as T
 
 from config import config
@@ -31,7 +31,7 @@ class Match:
 
 
 def match_collate_fn(batch):
-    channel = 3 if config.task.eda_mode else 1
+    channel = 3
 
     reference_patches = torch.stack([match.reference_patches for match in batch])
     reference_patches = reference_patches.reshape(-1, channel, config.image.patch_size, config.image.patch_size)
@@ -89,7 +89,7 @@ class MatchesDataset(torch.utils.data.Dataset):
     @staticmethod
     def _get_image(image_name):
         image_path = os.path.join(config.paths.images, f'{image_name}.png')
-        mode = "RGB" if config.task.eda_mode else "L"
+        mode = 'RGB'
         image = Image.open(image_path).convert(mode)
         return image
 
@@ -288,17 +288,17 @@ class MatchesDataModule(L.LightningDataModule):
 
         self.patch_augmentation_no_kp = A.Compose(
             transforms=[
-                A.Defocus(p=0.2, radius=2),
+                A.Defocus(p=0.3, radius=2),
             ]
         )
 
-        pad_val = 0 if not config.task.eda_mode else (0, 255, 0)
         always_apply = config.task.eda_mode
+        pad_val = (0, 255, 0) if config.task.eda_mode else 0
 
         self.patch_augmentation_kp = A.Compose(
             transforms=[
                 A.Rotate(p=0.5, always_apply=always_apply),
-                A.Perspective(keep_size=True, fit_output=True, pad_val=pad_val, p=0.5, always_apply=always_apply),
+                A.Perspective(fit_output=True, pad_val=pad_val, p=0.5, always_apply=always_apply),
                 # A.HorizontalFlip(p=0.5),
                 # A.VerticalFlip(p=0.5),
                 # A.RandomRotate90(p=0.5),
