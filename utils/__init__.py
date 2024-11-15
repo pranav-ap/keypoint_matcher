@@ -1,4 +1,4 @@
-from .common import make_clear_directory, get_best_device
-from .visualize import show_batch
+from .common import get_best_device, make_clear_directory
 # noinspection PyUnresolvedReferences
 from .logger import logger
+from .visualize import show_batch

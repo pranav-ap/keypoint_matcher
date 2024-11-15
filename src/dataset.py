@@ -1,37 +1,37 @@
 import os
 import random
-from typing import Dict, Optional, Any
 from collections import OrderedDict
+from dataclasses import dataclass
+from typing import Dict, Optional
 
+import albumentations as A
 import h5py
 import lightning as L
 import numpy as np
 import torch
 from PIL import Image, ImageDraw
 from torchvision import transforms as T
-import albumentations as A
 
 from config import config
 from utils import logger
-from dataclasses import dataclass
 
 torch.set_float32_matmul_precision('medium')
 
 
 @dataclass
 class Match:
-    reference_patches: Any = None
-    target_patches: Any = None
+    reference_patches: Optional[torch.Tensor] = None
+    target_patches: Optional[torch.Tensor] = None
 
-    image_level_reference_coords: Any = None
-    image_level_target_coords: Any = None
+    image_level_reference_coords: Optional[torch.Tensor] = None
+    image_level_target_coords: Optional[torch.Tensor] = None
 
-    patch_level_reference_coords: Any = None
-    patch_level_target_coords: Any = None
+    patch_level_reference_coords: Optional[torch.Tensor] = None
+    patch_level_target_coords: Optional[torch.Tensor] = None
 
 
 def match_collate_fn(batch):
-    channel = 3
+    channel = 3 if config.task.eda_mode else 1
 
     reference_patches = torch.stack([match.reference_patches for match in batch])
     reference_patches = reference_patches.reshape(-1, channel, config.image.patch_size, config.image.patch_size)
@@ -65,16 +65,18 @@ def match_collate_fn(batch):
 
 class MatchesDataset(torch.utils.data.Dataset):
     # noinspection PyTypeChecker
-    def __init__(self, subset, pair_names, patch_indices, image_transform=None, patch_transform=None, patch_augmentation=None):
+    def __init__(self,
+                 subset, pair_names, patch_indices,
+                 patch_normalize=None,
+                 patch_augmentation_no_kp=None,
+                 patch_augmentation_kp=None):
         self.subset = subset
         self.pair_names = pair_names
         self.patch_indices = patch_indices
 
-        self.image_transform = image_transform
-        self.patch_transform = patch_transform
-        self.patch_augmentation = patch_augmentation
-
-        self.draw_keypoint = config.task.eda_mode
+        self.patch_normalize = patch_normalize
+        self.patch_augmentation_no_kp = patch_augmentation_no_kp
+        self.patch_augmentation_kp = patch_augmentation_kp
 
     def _setup_file(self):
         self.file = h5py.File(config.paths.matches, mode='r')
@@ -90,7 +92,7 @@ class MatchesDataset(torch.utils.data.Dataset):
         image = Image.open(image_path).convert("RGB")
         return image
 
-    def _get_image_level_items(self, idx, match: Match):
+    def _prepare_images(self, idx, match: Match):
         pair_name = self.pair_names[idx]
         patch_indices = self.patch_indices[pair_name]
 
@@ -98,8 +100,6 @@ class MatchesDataset(torch.utils.data.Dataset):
         target_coords = self.targets_group[pair_name][()][patch_indices]
         assert reference_coords.shape == target_coords.shape
 
-        # match.image_level_reference_coords = reference_coords
-        # match.image_level_target_coords = target_coords
         match.image_level_reference_coords = torch.tensor(reference_coords, dtype=torch.int32)
         match.image_level_target_coords = torch.tensor(target_coords, dtype=torch.int32)
 
@@ -107,10 +107,6 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         reference_image = self._get_image(reference_image_name)
         target_image = self._get_image(target_image_name)
-
-        if self.image_transform:
-            reference_image = self.image_transform(reference_image)
-            target_image = self.image_transform(target_image)
 
         return reference_image, target_image
 
@@ -164,14 +160,49 @@ class MatchesDataset(torch.utils.data.Dataset):
         assert patch.size[1] == lower - upper
 
         keypoints = transformed['keypoints']
-        assert len(keypoints) == 1
+        assert len(keypoints) == 1, "Expected a single transformed keypoint"
         keypoint = int(keypoints[0][0]), int(keypoints[0][1])
 
         return patch, keypoint
 
-    def _prepare_patches(self, image: Image.Image, image_level_coords, perturb=False):
+    def _prepare_reference_patches(self, image: Image.Image, match):
         patches = []
         patch_level_coords = []
+        image_level_coords = match.image_level_reference_coords
+
+        image_width, image_height = image.size
+
+        desired_patch_size = config.image.patch_size
+        assert desired_patch_size < image_width
+        assert desired_patch_size < image_height
+
+        for x, y in image_level_coords:
+            keypoint = int(x.item()), int(y.item())
+
+            left, upper, right, lower = self._get_patch_boundary(image, keypoint, desired_patch_size)
+            patch, keypoint = self._center_crop(image, keypoint, left, upper, right, lower)
+
+            if self.patch_augmentation_no_kp:
+                patch_np = np.array(patch)
+                transformed = self.patch_augmentation_no_kp(
+                    image=patch_np,
+                )
+
+                patch = Image.fromarray(transformed['image'])
+
+            if self.patch_normalize:
+                patch = self.patch_normalize(patch)
+
+            patches.append(patch)
+            patch_level_coords.append(keypoint)
+
+        match.reference_patches = torch.stack(patches)
+        match.patch_level_reference_coords = torch.tensor(patch_level_coords, dtype=torch.int32)
+
+    def _prepare_target_patches(self, image: Image.Image, match):
+        patches = []
+        patch_level_coords = []
+        image_level_coords = match.image_level_target_coords
 
         image_width, image_height = image.size
 
@@ -182,48 +213,54 @@ class MatchesDataset(torch.utils.data.Dataset):
         padded_patch_size = 2 * (desired_patch_size - config.image.patch_border)
         assert desired_patch_size < padded_patch_size
 
-        if not perturb:
-            padded_patch_size = desired_patch_size
-
-        assert padded_patch_size < image_width
-        assert padded_patch_size < image_height
-
         for x, y in image_level_coords:
             keypoint = int(x.item()), int(y.item())
 
             left, upper, right, lower = self._get_patch_boundary(image, keypoint, padded_patch_size)
             patch, keypoint = self._center_crop(image, keypoint, left, upper, right, lower)
 
-            if perturb:
-                perturb_size = (desired_patch_size - config.image.patch_border) // 2
-                perturb_x = random.randint(-perturb_size, perturb_size)
-                perturb_y = random.randint(-perturb_size, perturb_size)
+            if self.patch_augmentation_no_kp:
+                patch_np = np.array(patch)
+                transformed = self.patch_augmentation_no_kp(
+                    image=patch_np
+                )
 
-                x, y = keypoint
-                center_point_x, center_point_y = x + perturb_x, y + perturb_y
-                center_point_x = max(0, min(center_point_x, padded_patch_size - 1))
-                center_point_y = max(0, min(center_point_y, padded_patch_size - 1))
-                center_point = center_point_x, center_point_y
+                patch = Image.fromarray(transformed['image'])
 
-                left, upper, right, lower = self._get_patch_boundary(patch, center_point, desired_patch_size)
-                patch, keypoint = self._center_crop(patch, keypoint, left, upper, right, lower)
+            if self.patch_augmentation_kp:
+                patch_np = np.array(patch)
+                transformed = self.patch_augmentation_kp(
+                    image=patch_np,
+                    keypoints=[keypoint]
+                )
 
-            if self.draw_keypoint:
-                draw_im = ImageDraw.Draw(patch)
-                radius = 2
-                x, y = keypoint
-                draw_im.ellipse((x - radius, y - radius, x + radius, y + radius), outline="red")
+                patch = Image.fromarray(transformed['image'])
+                keypoints = transformed['keypoints']
 
-            if self.patch_transform:
-                patch = self.patch_transform(patch)
+                assert len(keypoints) == 1, "Expected a single transformed keypoint"
+                keypoint = (int(keypoints[0][0]), int(keypoints[0][1]))
+
+            perturb_size = (desired_patch_size - config.image.patch_border) // 2
+            perturb_x = random.randint(-perturb_size, perturb_size)
+            perturb_y = random.randint(-perturb_size, perturb_size)
+
+            x, y = keypoint
+            center_point_x, center_point_y = x + perturb_x, y + perturb_y
+            center_point_x = max(0, min(center_point_x, padded_patch_size - 1))
+            center_point_y = max(0, min(center_point_y, padded_patch_size - 1))
+            center_point = center_point_x, center_point_y
+
+            left, upper, right, lower = self._get_patch_boundary(patch, center_point, desired_patch_size)
+            patch, keypoint = self._center_crop(patch, keypoint, left, upper, right, lower)
+
+            if self.patch_normalize:
+                patch = self.patch_normalize(patch)
 
             patches.append(patch)
             patch_level_coords.append(keypoint)
 
-        patches = torch.stack(patches)
-        patch_level_coords = torch.tensor(patch_level_coords, dtype=torch.int32)
-
-        return patches, patch_level_coords
+        match.target_patches = torch.stack(patches)
+        match.patch_level_target_coords = torch.tensor(patch_level_coords, dtype=torch.int32)
 
     def __getitem__(self, idx):
         if not hasattr(self, 'file'):
@@ -232,13 +269,11 @@ class MatchesDataset(torch.utils.data.Dataset):
         assert hasattr(self, 'file')
 
         match = Match()
-        reference_image, target_image = self._get_image_level_items(idx, match)
 
-        patches, patch_level_coords = self._prepare_patches(reference_image, match.image_level_reference_coords)
-        match.reference_patches, match.patch_level_reference_coords = patches, patch_level_coords
+        reference_image, target_image = self._prepare_images(idx, match)
 
-        patches, patch_level_coords = self._prepare_patches(target_image, match.image_level_target_coords, perturb=True)
-        match.target_patches, match.patch_level_target_coords = patches, patch_level_coords
+        self._prepare_reference_patches(reference_image, match)
+        self._prepare_target_patches(target_image, match)
 
         return match
 
@@ -250,19 +285,27 @@ class MatchesDataModule(L.LightningDataModule):
         self.num_workers = 0 if config.task.eda_mode else os.cpu_count()
         self.persistent_workers = not config.task.eda_mode
 
-        self.image_transform = T.Compose([])
-
-        self.patch_augmentation = A.Compose(
+        self.patch_augmentation_no_kp = A.Compose(
             transforms=[
-                A.HorizontalFlip(),
-                # A.RandomRotate90(),
+                A.Defocus(p=0.2, radius=2),
+            ]
+        )
+
+        pad_val = 0 if not config.task.eda_mode else (0, 255, 0)
+
+        self.patch_augmentation_kp = A.Compose(
+            transforms=[
+                A.Rotate(p=0.5),
+                A.Perspective(keep_size=True, fit_output=True, p=0.5, pad_val=pad_val),
+                # A.HorizontalFlip(p=0.5),
+                # A.VerticalFlip(p=0.5),
+                # A.RandomRotate90(p=0.5),
             ],
             keypoint_params=A.KeypointParams(format='xy')
         )
 
-        self.patch_transform = T.Compose([
+        self.patch_normalize = T.Compose([
             T.ToTensor(),
-            T.ConvertImageDtype(torch.float),
             T.Normalize(mean=[0.5], std=[0.5]),
         ])
 
@@ -280,7 +323,8 @@ class MatchesDataModule(L.LightningDataModule):
             self.prepare_single_mode_data()
 
     def prepare_single_mode_data(self):
-        for (pair_name, ref_dataset), (_, tar_dataset) in zip(self.references_group.items(), self.targets_group.items()):
+        for (pair_name, ref_dataset), (_, tar_dataset) in zip(self.references_group.items(),
+                                                              self.targets_group.items()):
             if not isinstance(ref_dataset, h5py.Dataset) or not isinstance(tar_dataset, h5py.Dataset):
                 continue
 
@@ -307,16 +351,18 @@ class MatchesDataModule(L.LightningDataModule):
                 subset="train",
                 pair_names=train_pair_names,
                 patch_indices=self.patch_indices,
-                patch_transform=self.patch_transform,
-                patch_augmentation=self.patch_augmentation
+
+                patch_normalize=self.patch_normalize,
+                patch_augmentation_no_kp=self.patch_augmentation_no_kp,
+                patch_augmentation_kp=self.patch_augmentation_kp,
             )
 
             self.dataset['val'] = MatchesDataset(
                 subset="validate",
                 pair_names=val_pair_names,
                 patch_indices=self.patch_indices,
-                patch_transform=self.patch_transform,
-                patch_augmentation=self.patch_augmentation
+
+                patch_normalize=self.patch_normalize,
             )
 
             logger.info(f"Train Dataset       : {len(self.dataset['train'])} samples")
@@ -327,7 +373,7 @@ class MatchesDataModule(L.LightningDataModule):
                 subset="train",
                 pair_names=self.pair_names['test'],
                 patch_indices=self.patch_indices,
-                patch_transform=self.patch_transform,
+                patch_normalize=self.patch_normalize,
             )
 
             logger.info(f"Test Dataset  : {len(self.dataset['test'])} samples")
