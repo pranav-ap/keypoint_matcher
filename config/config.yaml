@@ -6,7 +6,7 @@ task:
     cam: cam0
 
     single_mode: True
-    eda_mode: False  # True False
+    eda_mode: True  # True False
 
 paths:
     roots:

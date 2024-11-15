@@ -89,7 +89,8 @@ class MatchesDataset(torch.utils.data.Dataset):
     @staticmethod
     def _get_image(image_name):
         image_path = os.path.join(config.paths.images, f'{image_name}.png')
-        image = Image.open(image_path).convert("RGB")
+        mode = "RGB" if config.task.eda_mode else "L"
+        image = Image.open(image_path).convert(mode)
         return image
 
     def _prepare_images(self, idx, match: Match):
@@ -292,11 +293,12 @@ class MatchesDataModule(L.LightningDataModule):
         )
 
         pad_val = 0 if not config.task.eda_mode else (0, 255, 0)
+        always_apply = config.task.eda_mode
 
         self.patch_augmentation_kp = A.Compose(
             transforms=[
-                A.Rotate(p=0.5),
-                A.Perspective(keep_size=True, fit_output=True, p=0.5, pad_val=pad_val),
+                A.Rotate(p=0.5, always_apply=always_apply),
+                A.Perspective(keep_size=True, fit_output=True, pad_val=pad_val, p=0.5, always_apply=always_apply),
                 # A.HorizontalFlip(p=0.5),
                 # A.VerticalFlip(p=0.5),
                 # A.RandomRotate90(p=0.5),
