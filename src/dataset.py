@@ -1,7 +1,6 @@
-import math
 import os
 import random
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 from collections import OrderedDict
 
 import h5py
@@ -21,14 +20,14 @@ torch.set_float32_matmul_precision('medium')
 
 @dataclass
 class Match:
-    reference_patches: Optional[torch.Tensor] = None
-    target_patches: Optional[torch.Tensor] = None
+    reference_patches: Any = None
+    target_patches: Any = None
 
-    image_level_reference_coords: Optional[torch.Tensor] = None
-    image_level_target_coords: Optional[torch.Tensor] = None
+    image_level_reference_coords: Any = None
+    image_level_target_coords: Any = None
 
-    patch_level_reference_coords: Optional[torch.Tensor] = None
-    patch_level_target_coords: Optional[torch.Tensor] = None
+    patch_level_reference_coords: Any = None
+    patch_level_target_coords: Any = None
 
 
 def match_collate_fn(batch):
@@ -66,19 +65,21 @@ def match_collate_fn(batch):
 
 class MatchesDataset(torch.utils.data.Dataset):
     # noinspection PyTypeChecker
-    def __init__(self, subset, pair_names, patch_indices, image_transform=None, patch_transform=None, draw_keypoint=False):
+    def __init__(self, subset, pair_names, patch_indices, image_transform=None, patch_transform=None, patch_augmentation=None):
         self.subset = subset
         self.pair_names = pair_names
+        self.patch_indices = patch_indices
+
         self.image_transform = image_transform
         self.patch_transform = patch_transform
+        self.patch_augmentation = patch_augmentation
 
-        self.patch_indices = patch_indices
-        self.draw_keypoint = draw_keypoint
+        self.draw_keypoint = config.task.eda_mode
 
     def _setup_file(self):
         self.file = h5py.File(config.paths.matches, mode='r')
-        self.references_group = self.file[f'{config.task.track}/{config.task.cam}/reference_coords']
-        self.targets_group = self.file[f'{config.task.track}/{config.task.cam}/target_coords']
+        self.references_group = self.file[f'{config.task.video}/{config.task.cam}/reference_coords']
+        self.targets_group = self.file[f'{config.task.video}/{config.task.cam}/target_coords']
 
     def __len__(self):
         return len(self.pair_names)
@@ -97,8 +98,10 @@ class MatchesDataset(torch.utils.data.Dataset):
         target_coords = self.targets_group[pair_name][()][patch_indices]
         assert reference_coords.shape == target_coords.shape
 
-        match.image_level_reference_coords = torch.from_numpy(reference_coords)
-        match.image_level_target_coords = torch.from_numpy(target_coords)
+        # match.image_level_reference_coords = reference_coords
+        # match.image_level_target_coords = target_coords
+        match.image_level_reference_coords = torch.tensor(reference_coords, dtype=torch.int32)
+        match.image_level_target_coords = torch.tensor(target_coords, dtype=torch.int32)
 
         reference_image_name, target_image_name = pair_name.split('_')
 
@@ -112,9 +115,9 @@ class MatchesDataset(torch.utils.data.Dataset):
         return reference_image, target_image
 
     @staticmethod
-    def _get_patch_boundary(image: Image.Image, keypoint, patch_size):
+    def _get_patch_boundary(image: Image.Image, center_point, patch_size):
         image_width, image_height = image.size
-        x, y = keypoint
+        x, y = center_point
         half_patch_size = patch_size // 2
 
         left, right = x - half_patch_size, x + half_patch_size
@@ -166,42 +169,22 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         return patch, keypoint
 
-    @staticmethod
-    def _random_crop(patch, keypoint, desired_patch_size):
-        transform = A.Compose(
-            transforms=[
-                A.RandomCrop(
-                    width=desired_patch_size,
-                    height=desired_patch_size
-                ),
-            ],
-            keypoint_params=A.KeypointParams(format='xy')
-        )
-
-        transformed = transform(image=np.array(patch), keypoints=[keypoint])
-
-        patch = Image.fromarray(transformed['image'])
-        assert patch.size[0] == patch.size[1]
-
-        keypoints = transformed['keypoints']
-        assert len(keypoints) == 1
-        keypoint = int(keypoints[0][0]), int(keypoints[0][1])
-
-        return patch, keypoint
-
     def _prepare_patches(self, image: Image.Image, image_level_coords, perturb=False):
         patches = []
         patch_level_coords = []
 
         image_width, image_height = image.size
+
         desired_patch_size = config.image.patch_size
-        padded_patch_size = 2 * desired_patch_size - config.image.patch_border
+        assert desired_patch_size < image_width
+        assert desired_patch_size < image_height
+
+        padded_patch_size = 2 * (desired_patch_size - config.image.patch_border)
+        assert desired_patch_size < padded_patch_size
 
         if not perturb:
             padded_patch_size = desired_patch_size
 
-        assert desired_patch_size < image_width
-        assert desired_patch_size < image_height
         assert padded_patch_size < image_width
         assert padded_patch_size < image_height
 
@@ -212,13 +195,24 @@ class MatchesDataset(torch.utils.data.Dataset):
             patch, keypoint = self._center_crop(image, keypoint, left, upper, right, lower)
 
             if perturb:
-                patch, keypoint = self._random_crop(patch, keypoint, desired_patch_size)
+                perturb_size = (desired_patch_size - config.image.patch_border) // 2
+                perturb_x = random.randint(-perturb_size, perturb_size)
+                perturb_y = random.randint(-perturb_size, perturb_size)
+
+                x, y = keypoint
+                center_point_x, center_point_y = x + perturb_x, y + perturb_y
+                center_point_x = max(0, min(center_point_x, padded_patch_size - 1))
+                center_point_y = max(0, min(center_point_y, padded_patch_size - 1))
+                center_point = center_point_x, center_point_y
+
+                left, upper, right, lower = self._get_patch_boundary(patch, center_point, desired_patch_size)
+                patch, keypoint = self._center_crop(patch, keypoint, left, upper, right, lower)
 
             if self.draw_keypoint:
                 draw_im = ImageDraw.Draw(patch)
                 radius = 2
-                patch_level_x, patch_level_y = keypoint
-                draw_im.ellipse((patch_level_x - radius, patch_level_y - radius, patch_level_x + radius, patch_level_y + radius), outline="red")
+                x, y = keypoint
+                draw_im.ellipse((x - radius, y - radius, x + radius, y + radius), outline="red")
 
             if self.patch_transform:
                 patch = self.patch_transform(patch)
@@ -234,6 +228,8 @@ class MatchesDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         if not hasattr(self, 'file'):
             self._setup_file()
+
+        assert hasattr(self, 'file')
 
         match = Match()
         reference_image, target_image = self._get_image_level_items(idx, match)
@@ -253,9 +249,17 @@ class MatchesDataModule(L.LightningDataModule):
 
         self.num_workers = 0 if config.task.eda_mode else os.cpu_count()
         self.persistent_workers = not config.task.eda_mode
-        self.draw_keypoint = config.task.eda_mode
 
         self.image_transform = T.Compose([])
+
+        self.patch_augmentation = A.Compose(
+            transforms=[
+                A.HorizontalFlip(),
+                # A.RandomRotate90(),
+            ],
+            keypoint_params=A.KeypointParams(format='xy')
+        )
+
         self.patch_transform = T.Compose([
             T.ToTensor(),
             T.ConvertImageDtype(torch.float),
@@ -266,8 +270,8 @@ class MatchesDataModule(L.LightningDataModule):
         self.patch_indices = OrderedDict()
 
         self.file = h5py.File(config.paths.matches, mode='r')
-        self.references_group = self.file[f'{config.task.track}/{config.task.cam}/reference_coords']
-        self.targets_group = self.file[f'{config.task.track}/{config.task.cam}/target_coords']
+        self.references_group = self.file[f'{config.task.video}/{config.task.cam}/reference_coords']
+        self.targets_group = self.file[f'{config.task.video}/{config.task.cam}/target_coords']
 
         self.pair_names = {}
 
@@ -304,7 +308,7 @@ class MatchesDataModule(L.LightningDataModule):
                 pair_names=train_pair_names,
                 patch_indices=self.patch_indices,
                 patch_transform=self.patch_transform,
-                draw_keypoint=self.draw_keypoint
+                patch_augmentation=self.patch_augmentation
             )
 
             self.dataset['val'] = MatchesDataset(
@@ -312,7 +316,7 @@ class MatchesDataModule(L.LightningDataModule):
                 pair_names=val_pair_names,
                 patch_indices=self.patch_indices,
                 patch_transform=self.patch_transform,
-                draw_keypoint=self.draw_keypoint
+                patch_augmentation=self.patch_augmentation
             )
 
             logger.info(f"Train Dataset       : {len(self.dataset['train'])} samples")
@@ -324,7 +328,6 @@ class MatchesDataModule(L.LightningDataModule):
                 pair_names=self.pair_names['test'],
                 patch_indices=self.patch_indices,
                 patch_transform=self.patch_transform,
-                draw_keypoint=self.draw_keypoint
             )
 
             logger.info(f"Test Dataset  : {len(self.dataset['test'])} samples")

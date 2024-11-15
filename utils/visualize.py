@@ -1,11 +1,11 @@
 import torchvision.transforms as T
-from PIL import Image
+from PIL import Image, ImageOps
 
 import matplotlib.pyplot as plt
 plt.style.use('seaborn-v0_8-whitegrid')
 
 
-def show_batch(reference_patches, target_patches, limit_count=None):
+def show_batch(reference_patches, target_patches, limit_count=None, border_size=2, border_color="white"):
     to_pil = T.ToPILImage()
 
     denormalize = T.Compose([
@@ -18,8 +18,8 @@ def show_batch(reference_patches, target_patches, limit_count=None):
 
     patch_size = 128
 
-    combined_width = patch_size * 2
-    combined_height = num_patches * patch_size
+    combined_width = patch_size * 2 + border_size * 4
+    combined_height = num_patches * (patch_size + border_size * 2)
 
     combined_image = Image.new('RGB', (combined_width, combined_height))
 
@@ -33,9 +33,12 @@ def show_batch(reference_patches, target_patches, limit_count=None):
         img1 = to_pil(img1).resize((patch_size, patch_size))
         img2 = to_pil(img2).resize((patch_size, patch_size))
 
-        y = j * patch_size   # Position for the current row
-        x1 = 0               # Position for img1 (reference patch)
-        x2 = patch_size      # Position for img2 (target patch)
+        img1 = ImageOps.expand(img1, border=border_size, fill=border_color)
+        img2 = ImageOps.expand(img2, border=border_size, fill=border_color)
+
+        y = j * (patch_size + 2 * border_size)
+        x1 = border_size
+        x2 = patch_size + 2 * border_size
 
         combined_image.paste(img1, (x1, y))
         combined_image.paste(img2, (x2, y))

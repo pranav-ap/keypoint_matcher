@@ -2,7 +2,7 @@ log_level: TRACE  # TRACE WARNING
 
 task:
     dataset: monado_slam
-    track: MOO07_mapping_easy
+    video: MOO07_mapping_easy
     cam: cam0
 
     single_mode: True
@@ -11,7 +11,7 @@ task:
 paths:
     roots:
         ws: D:/thesis_code # /home/stud/ath/ath_ws  D:/thesis_code
-        mav: ${paths.roots.ws}/datasets/${task.dataset}/${task.track}/mav0
+        mav: ${paths.roots.ws}/datasets/${task.dataset}/${task.video}/mav0
         project: ${paths.roots.ws}/keypoint_matcher
         output: ${paths.roots.project}/output
 
@@ -22,7 +22,7 @@ image:
     # [width, height]
     original_image_shape: [640, 480]  # [640, 480]
     patch_size: 32
-    patch_border: 2 # 2 pixels
+    patch_border: 4 # pixels
 
 train:
     train_batch_size: 4
