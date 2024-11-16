@@ -1,17 +1,26 @@
 import lightning.pytorch as pl
 from lightning.pytorch.loggers import TensorBoardLogger
 import torch
+import click
 
 from config import config
 from src import Light, MatchesDataModule
-from utils import logger
+from utils import logger, make_clear_directory
 
 torch.set_float32_matmul_precision('medium')
 
 
-def main():
-    torch.cuda.empty_cache()
+def handle_clear_logs(clear_opt):
+    if clear_opt == 'exp':
+        make_clear_directory(f'{config.paths.output.logs}/{config.experiment.name}')
+    elif clear_opt == 'all':
+        make_clear_directory(config.paths.output.logs)
 
+    make_clear_directory(config.paths.output.val_images)
+    make_clear_directory(config.paths.output.test_images)
+
+
+def train():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Using device: {device}")
 
@@ -42,6 +51,18 @@ def main():
 
     if trainer.checkpoint_callback.best_model_path:
         logger.info(f"Best model path : {trainer.checkpoint_callback.best_model_path}")
+
+
+@click.command()
+@click.option(
+    '--clear',
+    type=click.Choice(['none', 'exp', 'all'], case_sensitive=False),
+    default='none',
+    help='Clear current experiment logs')
+def main(clear):
+    handle_clear_logs(clear)
+    torch.cuda.empty_cache()
+    train()
 
 
 if __name__ == '__main__':

@@ -21,7 +21,7 @@ dependencies:
     - lightning
     - diffusers
     - datasets
-    -
+    - click
     - timm
     - pip:
         - opencv-python

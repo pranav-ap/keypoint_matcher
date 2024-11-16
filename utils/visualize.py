@@ -7,6 +7,10 @@ plt.style.use('seaborn-v0_8-whitegrid')
 to_tensor = T.ToTensor()
 to_pil = T.ToPILImage()
 
+denormalize = T.Compose([
+    T.Normalize(mean=[-0.5 / 0.5], std=[1 / 0.5]),
+])
+
 
 def get_tensor_grid(pil_image):
     return to_tensor(pil_image).unsqueeze(0)
@@ -14,10 +18,6 @@ def get_tensor_grid(pil_image):
 
 def show_batch(reference_patches, target_patches, patch_level_reference_coords, patch_level_target_coords, limit_count=None, border_size=2, border_color="white", n_columns=2):
     assert limit_count is None or limit_count > 0
-
-    denormalize = T.Compose([
-        T.Normalize(mean=[-0.5 / 0.5], std=[1 / 0.5]),
-    ])
 
     num_patches = reference_patches.size(0)
     if limit_count is not None:
