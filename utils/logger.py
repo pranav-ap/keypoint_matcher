@@ -8,6 +8,7 @@ from config import config
 
 def setup_logging():
     warnings.filterwarnings("ignore", category=FutureWarning)
+    warnings.filterwarnings("ignore", category=UserWarning, module="tensorboard")
 
     logger.remove()  # Remove the default handler
     logger.add(

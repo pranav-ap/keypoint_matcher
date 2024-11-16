@@ -4,9 +4,16 @@ from PIL import Image, ImageOps, ImageDraw
 
 plt.style.use('seaborn-v0_8-whitegrid')
 
+to_tensor = T.ToTensor()
+to_pil = T.ToPILImage()
+
+
+def get_tensor_grid(pil_image):
+    return to_tensor(pil_image).unsqueeze(0)
+
 
 def show_batch(reference_patches, target_patches, patch_level_reference_coords, patch_level_target_coords, limit_count=None, border_size=2, border_color="white", n_columns=2):
-    to_pil = T.ToPILImage()
+    assert limit_count is None or limit_count > 0
 
     denormalize = T.Compose([
         T.Normalize(mean=[-0.5 / 0.5], std=[1 / 0.5]),
@@ -30,6 +37,10 @@ def show_batch(reference_patches, target_patches, patch_level_reference_coords, 
     def prepare_patch(patch, x, y, color):
         patch = denormalize(patch)
         patch = to_pil(patch)
+
+        if patch.mode != "RGB":
+            patch = patch.convert("RGB")
+
         draw_im = ImageDraw.Draw(patch)
         draw_im.ellipse((x - radius, y - radius, x + radius, y + radius), outline=color)
         patch = patch.resize((patch_size, patch_size))

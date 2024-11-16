@@ -1,5 +1,5 @@
-import lightning as L
 import lightning.pytorch as pl
+from lightning.pytorch.loggers import TensorBoardLogger
 import torch
 
 from config import config
@@ -10,18 +10,22 @@ torch.set_float32_matmul_precision('medium')
 
 
 def main():
+    torch.cuda.empty_cache()
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Using device: {device}")
 
     light = Light()
     dm = MatchesDataModule()
 
-    # checkpoint_path = ''
-    # light = Light.load_from_checkpoint(checkpoint_path)
+    tensorboard_logger = TensorBoardLogger(
+        save_dir=config.paths.output.logs,
+        name=config.experiment.name,
+    )
 
     trainer = pl.Trainer(
-        default_root_dir=config.paths.output,
-        logger=L.pytorch.loggers.TensorBoardLogger(save_dir=config.paths.output),
+        default_root_dir=config.paths.roots.output,
+        logger=tensorboard_logger,
         devices='auto',
         accelerator="auto",
         max_epochs=config.train.max_epochs,

@@ -5,8 +5,13 @@ task:
     video: MOO07_mapping_easy
     cam: cam0
 
-    single_mode: True
-    eda_mode: True  # True False
+    single_video_mode: True
+    eda_mode: False  # True False
+
+experiment:
+    model: resnet
+    loss: mse_loss
+    name: ${experiment.model}_${experiment.loss}
 
 paths:
     roots:
@@ -14,6 +19,11 @@ paths:
         mav: ${paths.roots.ws}/datasets/${task.dataset}/${task.video}/mav0
         project: ${paths.roots.ws}/keypoint_matcher
         output: ${paths.roots.project}/output
+
+    output:
+        logs: ${paths.roots.output}/logs
+        val_images: ${paths.roots.output}/images/val_images
+        test_images: ${paths.roots.output}/images/test_images
 
     matches: ${paths.roots.ws}/keypoint_dataset_pipeline/output/train/train_data.hdf5
     images: ${paths.roots.mav}/${task.cam}/data
@@ -30,15 +40,18 @@ train:
     num_patches_per_image: 20
 
     fast_dev_run: False
-    overfit_batches: 0
+    overfit_batches: 1
 
-    max_epochs: 100
+    patience: 5
+    max_epochs: 2
     check_val_every_n_epoch: 10
     num_sanity_val_steps: 1
     log_every_n_steps: 25
     accumulate_grad_batches: 1
     learning_rate: 1e-4
 
+val:
+    num_patch_pairs_to_save: 12
+
 test:
     batch_size: 4
-

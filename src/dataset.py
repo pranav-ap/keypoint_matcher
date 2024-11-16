@@ -4,6 +4,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Dict, Optional
 
+import cv2
 import albumentations as A
 import h5py
 import lightning as L
@@ -293,12 +294,13 @@ class MatchesDataModule(L.LightningDataModule):
         )
 
         always_apply = config.task.eda_mode
+        pad_mode = cv2.BORDER_CONSTANT  # cv2.BORDER_REPLICATE
         pad_val = (0, 255, 0) if config.task.eda_mode else 0
 
         self.patch_augmentation_kp = A.Compose(
             transforms=[
-                A.Rotate(p=0.5, always_apply=always_apply),
-                A.Perspective(fit_output=True, pad_val=pad_val, p=0.5, always_apply=always_apply),
+                A.Rotate(p=0.6, always_apply=always_apply),
+                A.Perspective(fit_output=True, pad_mode=pad_mode, pad_val=pad_val, p=0.6, always_apply=always_apply),
                 # A.HorizontalFlip(p=0.5),
                 # A.VerticalFlip(p=0.5),
                 # A.RandomRotate90(p=0.5),
@@ -321,12 +323,12 @@ class MatchesDataModule(L.LightningDataModule):
         self.pair_names = {}
 
     def prepare_data(self):
-        if config.task.single_mode:
-            self.prepare_single_mode_data()
+        if config.task.single_video_mode:
+            self.prepare_single_video_mode_data()
 
-    def prepare_single_mode_data(self):
-        for (pair_name, ref_dataset), (_, tar_dataset) in zip(self.references_group.items(),
-                                                              self.targets_group.items()):
+    def prepare_single_video_mode_data(self):
+        for a, b in zip(self.references_group.items(), self.targets_group.items()):
+            (pair_name, ref_dataset), (_, tar_dataset) = a, b
             if not isinstance(ref_dataset, h5py.Dataset) or not isinstance(tar_dataset, h5py.Dataset):
                 continue
 
