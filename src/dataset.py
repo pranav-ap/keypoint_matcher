@@ -24,9 +24,6 @@ class Match:
     reference_patches: Optional[torch.Tensor] = None
     target_patches: Optional[torch.Tensor] = None
 
-    image_level_reference_coords: Optional[torch.Tensor] = None
-    image_level_target_coords: Optional[torch.Tensor] = None
-
     patch_level_reference_coords: Optional[torch.Tensor] = None
     patch_level_target_coords: Optional[torch.Tensor] = None
 
@@ -40,12 +37,6 @@ def match_collate_fn(batch):
     target_patches = torch.stack([match.target_patches for match in batch])
     target_patches = target_patches.reshape(-1, channel, config.image.patch_size, config.image.patch_size)
 
-    image_level_reference_coords = torch.stack([match.image_level_reference_coords for match in batch])
-    image_level_reference_coords = image_level_reference_coords.reshape(-1, 2)
-
-    image_level_target_coords = torch.stack([match.image_level_target_coords for match in batch])
-    image_level_target_coords = image_level_target_coords.reshape(-1, 2)
-
     patch_level_reference_coords = torch.stack([match.patch_level_reference_coords for match in batch])
     patch_level_reference_coords = patch_level_reference_coords.reshape(-1, 2)
 
@@ -55,9 +46,6 @@ def match_collate_fn(batch):
     return Match(
         reference_patches,
         target_patches,
-
-        image_level_reference_coords,
-        image_level_target_coords,
 
         patch_level_reference_coords,
         patch_level_target_coords,
@@ -94,7 +82,7 @@ class MatchesDataset(torch.utils.data.Dataset):
         image = Image.open(image_path).convert(mode)
         return image
 
-    def _prepare_images(self, idx, match: Match):
+    def _prepare_images(self, idx):
         pair_name = self.pair_names[idx]
         patch_indices = self.patch_indices[pair_name]
 
@@ -102,15 +90,15 @@ class MatchesDataset(torch.utils.data.Dataset):
         target_coords = self.targets_group[pair_name][()][patch_indices]
         assert reference_coords.shape == target_coords.shape
 
-        match.image_level_reference_coords = torch.tensor(reference_coords, dtype=torch.int32)
-        match.image_level_target_coords = torch.tensor(target_coords, dtype=torch.int32)
+        image_level_reference_coords = torch.tensor(reference_coords, dtype=torch.int32)
+        image_level_target_coords = torch.tensor(target_coords, dtype=torch.int32)
 
         reference_image_name, target_image_name = pair_name.split('_')
 
         reference_image = self._get_image(reference_image_name)
         target_image = self._get_image(target_image_name)
 
-        return reference_image, target_image
+        return reference_image, target_image, image_level_reference_coords, image_level_target_coords
 
     @staticmethod
     def _get_patch_boundary(image: Image.Image, center_point, patch_size):
@@ -167,10 +155,9 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         return patch, keypoint
 
-    def _prepare_reference_patches(self, image: Image.Image, match):
+    def _prepare_reference_patches(self, image: Image.Image, image_level_coords, match: Match):
         patches = []
         patch_level_coords = []
-        image_level_coords = match.image_level_reference_coords
 
         image_width, image_height = image.size
 
@@ -201,10 +188,9 @@ class MatchesDataset(torch.utils.data.Dataset):
         match.reference_patches = torch.stack(patches)
         match.patch_level_reference_coords = torch.tensor(patch_level_coords, dtype=torch.int32)
 
-    def _prepare_target_patches(self, image: Image.Image, match):
+    def _prepare_target_patches(self, image: Image.Image, image_level_coords, match: Match):
         patches = []
         patch_level_coords = []
-        image_level_coords = match.image_level_target_coords
 
         image_width, image_height = image.size
 
@@ -272,10 +258,20 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         match = Match()
 
-        reference_image, target_image = self._prepare_images(idx, match)
+        package = self._prepare_images(idx)
+        reference_image, target_image, image_level_reference_coords, image_level_target_coords = package
 
-        self._prepare_reference_patches(reference_image, match)
-        self._prepare_target_patches(target_image, match)
+        self._prepare_reference_patches(
+            reference_image,
+            image_level_reference_coords,
+            match
+        )
+
+        self._prepare_target_patches(
+            target_image,
+            image_level_target_coords,
+            match
+        )
 
         return match
 
