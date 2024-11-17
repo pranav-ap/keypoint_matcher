@@ -149,7 +149,7 @@ class Light(pl.LightningModule):
             batch.reference_patches, batch.target_patches,
             batch.patch_level_reference_coords, patch_level_target_coords,
             limit_count=limit_count,
-            n_columns=4,
+            n_columns=3,
         )
 
         image_grid = get_tensor_grid(image_grid)
@@ -194,7 +194,7 @@ class Light(pl.LightningModule):
         checkpoint_callback = ModelCheckpoint(
             monitor='val_loss',
             mode='min',
-            dirpath=f'{config.paths.output}/checkpoints/',
+            dirpath=f'{config.paths.roots.output}/checkpoints/',
             filename="best_checkpoint",
             save_top_k=1,
             save_last=True,

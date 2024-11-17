@@ -2,6 +2,7 @@ import lightning.pytorch as pl
 from lightning.pytorch.loggers import TensorBoardLogger
 import torch
 import click
+# import mlflow
 
 from config import config
 from src import Light, MatchesDataModule
@@ -62,6 +63,10 @@ def train():
 def main(clear):
     handle_clear_logs(clear)
     torch.cuda.empty_cache()
+
+    # mlflow.set_tracking_uri(config.experiment.url)
+    # mlflow.pytorch.autolog()
+
     train()
 
 

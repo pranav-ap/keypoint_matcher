@@ -6,12 +6,13 @@ task:
     cam: cam0
 
     single_video_mode: True
-    eda_mode: True  # True False
+    eda_mode: False  # True False
 
 experiment:
     model: resnet
     loss: mse_loss
     name: ${experiment.model}_${experiment.loss}
+    url: http://localhost:5000
 
 paths:
     roots:
@@ -22,8 +23,8 @@ paths:
 
     output:
         logs: ${paths.roots.output}/logs
-        val_images: ${paths.roots.logs}/images/val_images
-        test_images: ${paths.roots.logs}/images/test_images
+        val_images: ${paths.output.logs}/images/val_images
+        test_images: ${paths.output.logs}/images/test_images
 
     matches: ${paths.roots.ws}/keypoint_dataset_pipeline/output/train/train_data.hdf5
     images: ${paths.roots.mav}/${task.cam}/data
@@ -43,7 +44,7 @@ train:
     overfit_batches: 1
 
     patience: 5
-    max_epochs: 6
+    max_epochs: 4
     check_val_every_n_epoch: 2
     num_sanity_val_steps: 1
     log_every_n_steps: 25
