@@ -22,7 +22,7 @@ paths:
         output: ${paths.roots.project}/output
 
     output:
-        logs: ${paths.roots.output}/logs
+        logs: ${paths.roots.output}/${experiment.name}/logs
         checkpoints: ${paths.roots.output}/${experiment.name}/checkpoints
         val_images: ${paths.roots.output}/${experiment.name}/images/val
         test_images: ${paths.roots.output}/${experiment.name}/images/test
@@ -37,15 +37,15 @@ image:
     patch_border: 2 # pixels
 
 train:
-    train_batch_size: 1 # 4
-    val_batch_size: 1 # 4
-    num_patches_per_image: 5 # 20
+    train_batch_size: 4
+    val_batch_size: 4
+    num_patches_per_image: 20
 
     fast_dev_run: False  # True False
     overfit_batches: 1
 
     patience: 5
-    max_epochs: 2
+    max_epochs: 8
     check_val_every_n_epoch: 1
     num_sanity_val_steps: 1
     log_every_n_steps: 1
@@ -53,7 +53,7 @@ train:
     learning_rate: 1e-4
 
 val:
-    num_patch_pairs_to_save: 12
+    num_patch_pairs_to_save: 40
 
 test:
     batch_size: 4

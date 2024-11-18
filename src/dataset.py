@@ -55,11 +55,11 @@ def match_collate_fn(batch):
 class MatchesDataset(torch.utils.data.Dataset):
     # noinspection PyTypeChecker
     def __init__(self,
-                 subset, pair_names, patch_indices,
+                 stage, pair_names, patch_indices,
                  patch_normalize=None,
                  patch_augmentation_no_kp=None,
                  patch_augmentation_kp=None):
-        self.subset = subset
+        self.stage = stage
         self.pair_names = pair_names
         self.patch_indices = patch_indices
 
@@ -201,7 +201,7 @@ class MatchesDataset(torch.utils.data.Dataset):
         padded_patch_size = 2 * (desired_patch_size - config.image.patch_border)
         assert desired_patch_size < padded_patch_size
 
-        for x, y in image_level_coords:
+        for index, (x, y) in enumerate(image_level_coords):
             keypoint = int(x.item()), int(y.item())
 
             left, upper, right, lower = self._get_patch_boundary(image, keypoint, padded_patch_size)
@@ -215,7 +215,7 @@ class MatchesDataset(torch.utils.data.Dataset):
 
                 patch = Image.fromarray(transformed['image'])
 
-            if self.patch_augmentation_kp:
+            if self.patch_augmentation_kp and self.stage == 'train':
                 patch_np = np.array(patch)
                 transformed = self.patch_augmentation_kp(
                     image=patch_np,
@@ -228,14 +228,19 @@ class MatchesDataset(torch.utils.data.Dataset):
                 assert len(keypoints) == 1, "Expected a single transformed keypoint"
                 keypoint = (int(keypoints[0][0]), int(keypoints[0][1]))
 
+            x, y = center_point = keypoint
+
+            if self.stage in ['val', 'test']:
+                random.seed(index)
+
             perturb_size = (desired_patch_size - config.image.patch_border) // 2
             perturb_x = random.randint(-perturb_size, perturb_size)
             perturb_y = random.randint(-perturb_size, perturb_size)
 
-            x, y = keypoint
             center_point_x, center_point_y = x + perturb_x, y + perturb_y
             center_point_x = max(0, min(center_point_x, padded_patch_size - 1))
             center_point_y = max(0, min(center_point_y, padded_patch_size - 1))
+
             center_point = center_point_x, center_point_y
 
             left, upper, right, lower = self._get_patch_boundary(patch, center_point, desired_patch_size)
@@ -348,7 +353,7 @@ class MatchesDataModule(L.LightningDataModule):
             val_pair_names = self.pair_names['train'][split_index:]
 
             self.dataset['train'] = MatchesDataset(
-                subset="train",
+                stage="train",
                 pair_names=train_pair_names,
                 patch_indices=self.patch_indices,
 
@@ -358,7 +363,7 @@ class MatchesDataModule(L.LightningDataModule):
             )
 
             self.dataset['val'] = MatchesDataset(
-                subset="validate",
+                stage="val",
                 pair_names=val_pair_names,
                 patch_indices=self.patch_indices,
 
@@ -370,7 +375,7 @@ class MatchesDataModule(L.LightningDataModule):
 
         if stage == "test":
             self.dataset['test'] = MatchesDataset(
-                subset="train",
+                stage="train",
                 pair_names=self.pair_names['test'],
                 patch_indices=self.patch_indices,
                 patch_normalize=self.patch_normalize,

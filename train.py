@@ -1,26 +1,27 @@
 import lightning.pytorch as pl
-from lightning.pytorch.loggers import MLFlowLogger, TensorBoardLogger, NeptuneLogger
 import torch
-import neptune
-import mlflow
 
 from config import config
 from src import Light, MatchesDataModule
-from utils import logger, make_clear_directory
+from utils import logger, make_clear_directory, MyLogger
 
 torch.set_float32_matmul_precision('medium')
 
 
-def train(ml_logger):
+def train():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Using device: {device}")
 
-    light = Light()
+    neptune_logger, tensorboard_logger = MyLogger.get_loggers()
+
+    light = Light(neptune_logger, tensorboard_logger)
     dm = MatchesDataModule()
+
+    neptune_logger.log_model_summary(model=light, max_depth=-1)
 
     trainer = pl.Trainer(
         default_root_dir=config.paths.roots.output,
-        logger=ml_logger,
+        logger=[neptune_logger, tensorboard_logger],
         devices='auto',
         accelerator="auto",
         max_epochs=config.train.max_epochs,
@@ -47,64 +48,13 @@ def prep_directories():
     make_clear_directory(config.paths.output.checkpoints)
 
 
-def get_mlflow_logger(run_id):
-    mlflow_logger = MLFlowLogger(
-        experiment_name=config.experiment.name,
-        tracking_uri=config.experiment.url,
-        artifact_location=config.paths.roots.output,
-        log_model=False,
-        run_id=run_id
-    )
-
-    return mlflow_logger
-
-
-def get_neptune_logger():
-    run = neptune.init_run(
-        project='neptune-ws/keypoint-matcher',
-        api_token='eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiJkZjQ4MDM4Yi1kZGIwLTQwMjYtODVhNi0yMjQzNmY1N2M5MGYifQ==',
-    )
-
-    neptune_logger = NeptuneLogger(
-        run=run,
-        # log_model_checkpoints=False,
-        # dependencies='environment.yml',
-    )
-
-    return neptune_logger
-
-
-def start_mlflow_version():
+def main():
     torch.cuda.empty_cache()
+    MyLogger.init_loggers()
     prep_directories()
 
-    mlflow.set_experiment(config.experiment.name)
-
-    with mlflow.start_run() as run:
-        ml_logger = get_mlflow_logger(run_id=run.info.run_id)
-        train(ml_logger)
-
-
-def start_tensorboard_version():
-    torch.cuda.empty_cache()
-    prep_directories()
-
-    tensorboard_logger = TensorBoardLogger(
-        save_dir=config.paths.output.logs,
-        name=config.experiment.name,
-    )
-
-    train(tensorboard_logger)
-
-
-def start_neptune_version():
-    torch.cuda.empty_cache()
-    prep_directories()
-
-    neptune_logger = get_neptune_logger()
-
-    train(neptune_logger)
+    train()
 
 
 if __name__ == '__main__':
-    start_neptune_version()
+    main()

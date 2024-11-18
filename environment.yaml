@@ -23,7 +23,6 @@ dependencies:
     - datasets
     - click
     - timm
-    - mlflow
     - pip:
         - opencv-python
         - albumentations
