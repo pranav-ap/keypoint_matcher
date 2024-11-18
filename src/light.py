@@ -1,7 +1,11 @@
+import os
+
 import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
-from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint, TQDMProgressBar
+from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint, TQDMProgressBar, ModelSummary
+# noinspection PyProtectedMember
+from neptune.types import File
 
 from config import config
 from utils import show_batch, get_tensor_grid, logger
@@ -12,14 +16,26 @@ torch.set_float32_matmul_precision('medium')
 
 
 class Light(pl.LightningModule):
-    def __init__(self):
+    def __init__(self, neptune_logger, tensorboard_logger):
         super().__init__()
+
+        self.neptune_logger = neptune_logger
+        self.tensorboard_logger = tensorboard_logger
 
         self.descriptor_model = DescriptorModel()
         self.matcher_model = MatcherModel()
 
         self.learning_rate = config.train.learning_rate
-        self.save_hyperparameters(ignore=['model'])
+
+        self.save_hyperparameters({
+            'learning_rate': self.learning_rate,
+        },
+            ignore=[
+                'model',
+                'neptune_logger',
+                'tensorboard_logger'
+            ]
+        )
 
     def forward(self, reference_patches, target_patches, patch_level_reference_coords):
         reference_patch_descriptors_pred = self.descriptor_model(reference_patches)
@@ -60,7 +76,11 @@ class Light(pl.LightningModule):
             target_patch_descriptors_pred
         )
 
-        self.log(f"train_loss", descriptor_loss, prog_bar=True, on_epoch=True, on_step=False)
+        metrics = {
+            "train/loss": descriptor_loss,
+        }
+
+        self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
 
         return descriptor_loss
 
@@ -85,14 +105,12 @@ class Light(pl.LightningModule):
             target_patch_level_coords_pred
         )
 
-        self.log_dict({
-            "val_loss": descriptor_loss,
-            "val_match_loss": match_loss,
-        },
-            prog_bar=True,
-            on_epoch=True,
-            on_step=False
-        )
+        metrics = {
+            "val/loss": descriptor_loss,
+            "val/match_loss": match_loss,
+        }
+
+        self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
@@ -103,7 +121,7 @@ class Light(pl.LightningModule):
                 stage='val'
             )
 
-        return {"val_loss": descriptor_loss, "val_match_loss": match_loss}
+        return metrics
 
     @torch.no_grad()
     def test_step(self, batch: Match, batch_idx):
@@ -126,14 +144,12 @@ class Light(pl.LightningModule):
             target_patch_level_coords_pred
         )
 
-        self.log_dict({
-            "test_loss": descriptor_loss,
-            "test_match_loss": match_loss,
-        },
-            prog_bar=True,
-            on_epoch=True,
-            on_step=False
-        )
+        metrics = {
+            "test/loss": descriptor_loss,
+            "test/match_loss": match_loss,
+        }
+
+        self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
 
         if batch_idx == 0:
             self._log_images(
@@ -142,24 +158,30 @@ class Light(pl.LightningModule):
                 stage='test'
             )
 
-        return {"test_loss": descriptor_loss, "test_match_loss": match_loss}
+        return metrics
 
     def _log_images(self, batch, patch_level_target_coords, limit_count=None, stage=None):
         image_grid = show_batch(
             batch.reference_patches, batch.target_patches,
             batch.patch_level_reference_coords, patch_level_target_coords,
             limit_count=limit_count,
-            n_columns=3,
+            n_columns=2,
         )
 
-        image_grid = get_tensor_grid(image_grid)
+        out_path = config.paths.output.val_images if stage == 'val' else config.paths.output.test_images
+        name = f'{stage}_global_step_{self.global_step}.png'
+        out_path = os.path.join(out_path, name)
+        image_grid.save(out_path)
 
-        name = f'{stage}_image_grid' if stage is not None else 'image_grid'
+        self.neptune_logger.experiment[f"{stage}/images"].append(
+            File.as_image(image_grid),
+            step=self.global_step,
+            name=name,
+        )
 
-        # noinspection PyUnresolvedReferences
-        self.logger.experiment.add_images(
-            name,
-            image_grid,
+        self.tensorboard_logger.experiment.add_images(
+            tag=f"{stage}_images",
+            img_tensor=get_tensor_grid(image_grid),
             global_step=self.global_step
         )
 
@@ -176,7 +198,7 @@ class Light(pl.LightningModule):
                 patience=2,
                 factor=0.5
             ),
-            "monitor": "train_loss",
+            "monitor": "train/loss",
             "interval": "epoch",
             "frequency": 1,
         }
@@ -185,22 +207,29 @@ class Light(pl.LightningModule):
 
     def configure_callbacks(self):
         early_stop_callback = EarlyStopping(
-            monitor="val_loss",
+            monitor="val/loss",
             patience=config.train.patience,
             mode="min",
             verbose=True,
         )
 
         checkpoint_callback = ModelCheckpoint(
-            monitor='val_loss',
+            monitor='val/loss',
             mode='min',
-            dirpath=f'{config.paths.roots.output}/checkpoints/',
-            filename="best_checkpoint",
+            dirpath=config.paths.output.checkpoints,
+            filename=f"best_checkpoint_{self.current_epoch}",
             save_top_k=1,
             save_last=True,
         )
 
-        progress_bar_callback = TQDMProgressBar(refresh_rate=10)
+        # summary_callback = ModelSummary(max_depth=-1)
+
+        progress_bar_callback = TQDMProgressBar(refresh_rate=5)
         lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
 
-        return [checkpoint_callback, early_stop_callback, progress_bar_callback, lr_monitor_callback]
+        return [
+            early_stop_callback,
+            checkpoint_callback,
+            progress_bar_callback,
+            lr_monitor_callback
+        ]

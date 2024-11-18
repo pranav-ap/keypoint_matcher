@@ -3,8 +3,10 @@
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
       <excludeFolder url="file://$MODULE_DIR$/data" />
+      <excludeFolder url="file://$MODULE_DIR$/mlartifacts" />
       <excludeFolder url="file://$MODULE_DIR$/mlruns" />
       <excludeFolder url="file://$MODULE_DIR$/output" />
+      <excludeFolder url="file://$MODULE_DIR$/.neptune" />
     </content>
     <orderEntry type="jdk" jdkName="common_env" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
