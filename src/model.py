@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+from config import config
 from utils import logger
 
 torch.set_float32_matmul_precision('medium')
@@ -145,13 +146,13 @@ class MatcherModel:
         mse = squared_diff.mean(dim=1)
 
         # Shape [80, 1024]
-        flat_mse = mse.view(80, -1)
+        flat_mse = mse.view(mse.shape[0], -1)
         # Shape [80]
         best_indices = torch.argmin(flat_mse, dim=1)
 
         # Flattened Index i = y * 32 + x = y * 32 + x
-        best_y = best_indices // 32  # Row index (y-coordinate)
-        best_x = best_indices % 32  # Column index (x-coordinate)
+        best_y = best_indices // config.image.patch_size  # Row index (y-coordinate)
+        best_x = best_indices % config.image.patch_size  # Column index (x-coordinate)
 
         # Shape [80, 2]
         best_target_coords = torch.stack([best_y, best_x], dim=1)

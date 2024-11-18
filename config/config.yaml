@@ -12,7 +12,7 @@ experiment:
     model: resnet
     loss: mse_loss
     name: ${experiment.model}_${experiment.loss}
-    url: http://localhost:5000
+    url: http://localhost:8080  # http://localhost:8080 file:///D:/thesis_code/keypoint_matcher/output
 
 paths:
     roots:
@@ -23,8 +23,9 @@ paths:
 
     output:
         logs: ${paths.roots.output}/logs
-        val_images: ${paths.output.logs}/images/val_images
-        test_images: ${paths.output.logs}/images/test_images
+        checkpoints: ${paths.roots.output}/${experiment.name}/checkpoints
+        val_images: ${paths.roots.output}/${experiment.name}/images/val
+        test_images: ${paths.roots.output}/${experiment.name}/images/test
 
     matches: ${paths.roots.ws}/keypoint_dataset_pipeline/output/train/train_data.hdf5
     images: ${paths.roots.mav}/${task.cam}/data
@@ -36,18 +37,18 @@ image:
     patch_border: 2 # pixels
 
 train:
-    train_batch_size: 4
-    val_batch_size: 4
-    num_patches_per_image: 20
+    train_batch_size: 1 # 4
+    val_batch_size: 1 # 4
+    num_patches_per_image: 5 # 20
 
-    fast_dev_run: False
+    fast_dev_run: False  # True False
     overfit_batches: 1
 
     patience: 5
-    max_epochs: 4
-    check_val_every_n_epoch: 2
+    max_epochs: 2
+    check_val_every_n_epoch: 1
     num_sanity_val_steps: 1
-    log_every_n_steps: 25
+    log_every_n_steps: 1
     accumulate_grad_batches: 1
     learning_rate: 1e-4
 

@@ -1,4 +1,5 @@
 import sys
+import os
 import warnings
 
 from loguru import logger
@@ -9,6 +10,8 @@ from config import config
 def setup_logging():
     warnings.filterwarnings("ignore", category=FutureWarning)
     warnings.filterwarnings("ignore", category=UserWarning, module="tensorboard")
+
+    os.environ["NO_ALBUMENTATIONS_UPDATE"] = "1"
 
     logger.remove()  # Remove the default handler
     logger.add(
