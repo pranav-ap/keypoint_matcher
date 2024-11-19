@@ -29,19 +29,11 @@ class Match:
 
 
 def match_collate_fn(batch):
-    channels = 3
-
     reference_patches = torch.cat([match.reference_patches for match in batch], dim=0)
-    # reference_patches = reference_patches.reshape(-1, channels, config.image.patch_size, config.image.patch_size)
-
     target_patches = torch.cat([match.target_patches for match in batch], dim=0)
-    # target_patches = target_patches.reshape(-1, channels, config.image.patch_size, config.image.patch_size)
 
     patch_level_reference_coords = torch.cat([match.patch_level_reference_coords for match in batch], dim=0)
-    # patch_level_reference_coords = patch_level_reference_coords.reshape(-1, 2)
-
     patch_level_target_coords = torch.cat([match.patch_level_target_coords for match in batch], dim=0)
-    # patch_level_target_coords = patch_level_target_coords.reshape(-1, 2)
 
     return Match(
         reference_patches,
@@ -56,16 +48,18 @@ class MatchesDataset(torch.utils.data.Dataset):
     # noinspection PyTypeChecker
     def __init__(self,
                  stage, pair_names, patch_indices,
+                 perturb_target=False,
                  patch_normalize=None,
-                 patch_augmentation_no_kp=None,
-                 patch_augmentation_kp=None):
+                 image_augmentation_no_kp=None,
+                 image_augmentation_kp=None):
         self.stage = stage
+        self.perturb_target = perturb_target
         self.pair_names = pair_names
         self.patch_indices = patch_indices
 
+        self.image_augmentation_no_kp = image_augmentation_no_kp
+        self.image_augmentation_kp = image_augmentation_kp
         self.patch_normalize = patch_normalize
-        self.patch_augmentation_no_kp = patch_augmentation_no_kp
-        self.patch_augmentation_kp = patch_augmentation_kp
 
     def _setup_file(self):
         self.file = h5py.File(config.paths.matches, mode='r')
@@ -81,24 +75,6 @@ class MatchesDataset(torch.utils.data.Dataset):
         mode = 'RGB'
         image = Image.open(image_path).convert(mode)
         return image
-
-    def _prepare_images(self, idx):
-        pair_name = self.pair_names[idx]
-        patch_indices = self.patch_indices[pair_name]
-
-        reference_coords = self.references_group[pair_name][()][patch_indices]
-        target_coords = self.targets_group[pair_name][()][patch_indices]
-        assert reference_coords.shape == target_coords.shape
-
-        image_level_reference_coords = torch.tensor(reference_coords, dtype=torch.int32)
-        image_level_target_coords = torch.tensor(target_coords, dtype=torch.int32)
-
-        reference_image_name, target_image_name = pair_name.split('_')
-
-        reference_image = self._get_image(reference_image_name)
-        target_image = self._get_image(target_image_name)
-
-        return reference_image, target_image, image_level_reference_coords, image_level_target_coords
 
     @staticmethod
     def _get_patch_boundary(image: Image.Image, center_point, patch_size):
@@ -136,7 +112,7 @@ class MatchesDataset(torch.utils.data.Dataset):
             transforms=[
                 A.Crop(
                     x_min=left, y_min=upper,
-                    x_max=right, y_max=lower
+                    x_max=right, y_max=lower,
                 ),
             ],
             keypoint_params=A.KeypointParams(format='xy')
@@ -155,29 +131,39 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         return patch, keypoint
 
-    def _prepare_reference_patches(self, image: Image.Image, image_level_coords, match: Match):
-        patches = []
-        patch_level_coords = []
+    def _prepare_references(self, reference_image_name, reference_coords):
+        reference_image = self._get_image(reference_image_name)
 
-        image_width, image_height = image.size
+        if self.image_augmentation_no_kp and self.stage == 'train':
+            reference_image_np = np.array(reference_image)
+            transformed = self.image_augmentation_no_kp(
+                image=reference_image_np,
+            )
 
+            reference_image = Image.fromarray(transformed['image'])
+
+        image_width, image_height = reference_image.size
         desired_patch_size = config.image.patch_size
         assert desired_patch_size < image_width
         assert desired_patch_size < image_height
 
-        for x, y in image_level_coords:
-            keypoint = int(x.item()), int(y.item())
+        patches = []
+        patch_level_coords = []
 
-            left, upper, right, lower = self._get_patch_boundary(image, keypoint, desired_patch_size)
-            patch, keypoint = self._center_crop(image, keypoint, left, upper, right, lower)
+        for x, y in reference_coords:
+            keypoint = x, y
 
-            if self.patch_augmentation_no_kp:
-                patch_np = np.array(patch)
-                transformed = self.patch_augmentation_no_kp(
-                    image=patch_np,
-                )
+            left, upper, right, lower = self._get_patch_boundary(
+                reference_image,
+                keypoint,
+                desired_patch_size
+            )
 
-                patch = Image.fromarray(transformed['image'])
+            patch, keypoint = self._center_crop(
+                reference_image,
+                keypoint,
+                left, upper, right, lower
+            )
 
             if self.patch_normalize:
                 patch = self.patch_normalize(patch)
@@ -185,66 +171,83 @@ class MatchesDataset(torch.utils.data.Dataset):
             patches.append(patch)
             patch_level_coords.append(keypoint)
 
-        match.reference_patches = torch.stack(patches)
-        match.patch_level_reference_coords = torch.tensor(patch_level_coords, dtype=torch.int32)
+        reference_patches = torch.stack(patches)
+        patch_level_reference_coords = torch.tensor(patch_level_coords, dtype=torch.int32)
 
-    def _prepare_target_patches(self, image: Image.Image, image_level_coords, match: Match):
-        patches = []
-        patch_level_coords = []
+        return reference_patches, patch_level_reference_coords
 
-        image_width, image_height = image.size
+    def _prepare_targets(self, target_image_name, target_coords):
+        target_image = self._get_image(target_image_name)
 
+        if self.stage == 'train' and self.image_augmentation_no_kp:
+            target_image_np = np.array(target_image)
+            transformed = self.image_augmentation_no_kp(
+                image=target_image_np,
+            )
+
+            target_image = Image.fromarray(transformed['image'])
+
+        image_width, image_height = target_image.size
         desired_patch_size = config.image.patch_size
         assert desired_patch_size < image_width
         assert desired_patch_size < image_height
 
-        padded_patch_size = 2 * (desired_patch_size - config.image.patch_border)
-        assert desired_patch_size < padded_patch_size
+        import math
+        padded_patch_size = desired_patch_size * 4
 
-        for index, (x, y) in enumerate(image_level_coords):
-            keypoint = int(x.item()), int(y.item())
+        patches = []
+        patch_level_coords = []
 
-            left, upper, right, lower = self._get_patch_boundary(image, keypoint, padded_patch_size)
-            patch, keypoint = self._center_crop(image, keypoint, left, upper, right, lower)
+        for index, (x, y) in enumerate(target_coords):
+            keypoint = int(x), int(y)
 
-            if self.patch_augmentation_no_kp and self.stage == 'train':
+            left, upper, right, lower = self._get_patch_boundary(
+                target_image,
+                keypoint,
+                padded_patch_size
+            )
+
+            patch, keypoint = self._center_crop(
+                target_image,
+                keypoint,
+                left, upper, right, lower
+            )
+
+            if self.stage == 'train' and self.image_augmentation_kp:
                 patch_np = np.array(patch)
-                transformed = self.patch_augmentation_no_kp(
-                    image=patch_np
-                )
-
-                patch = Image.fromarray(transformed['image'])
-
-            if self.patch_augmentation_kp and self.stage == 'train':
-                patch_np = np.array(patch)
-                transformed = self.patch_augmentation_kp(
+                transformed = self.image_augmentation_kp(
                     image=patch_np,
                     keypoints=[keypoint]
                 )
 
+                assert len(transformed['keypoints']) > 0, "No keypoints found after rotation"
                 patch = Image.fromarray(transformed['image'])
-                keypoints = transformed['keypoints']
+                x, y = transformed['keypoints'][0]
+                keypoint = int(x), int(y)
 
-                assert len(keypoints) == 1, "Expected a single transformed keypoint"
-                keypoint = (int(keypoints[0][0]), int(keypoints[0][1]))
+            center_point = x, y = keypoint
 
-            x, y = keypoint
+            if self.perturb_target:
+                if self.stage in ['val', 'test']:
+                    random.seed(index)
 
-            if self.stage in ['val', 'test']:
-                random.seed(index)
+                perturb_size = (desired_patch_size - config.image.patch_border) // 2
+                perturb_x = random.randint(-perturb_size, perturb_size)
+                perturb_y = random.randint(-perturb_size, perturb_size)
 
-            perturb_size = (desired_patch_size - config.image.patch_border) // 2
-            perturb_x = random.randint(-perturb_size, perturb_size)
-            perturb_y = random.randint(-perturb_size, perturb_size)
+                center_point = x + perturb_x, y + perturb_y
 
-            center_point_x, center_point_y = x + perturb_x, y + perturb_y
-            center_point_x = max(0, min(center_point_x, padded_patch_size - 1))
-            center_point_y = max(0, min(center_point_y, padded_patch_size - 1))
+            left, upper, right, lower = self._get_patch_boundary(
+                patch,
+                center_point,
+                desired_patch_size
+            )
 
-            center_point = center_point_x, center_point_y
-
-            left, upper, right, lower = self._get_patch_boundary(patch, center_point, desired_patch_size)
-            patch, keypoint = self._center_crop(patch, keypoint, left, upper, right, lower)
+            patch, keypoint = self._center_crop(
+                patch,
+                keypoint,
+                left, upper, right, lower
+            )
 
             if self.patch_normalize:
                 patch = self.patch_normalize(patch)
@@ -252,8 +255,34 @@ class MatchesDataset(torch.utils.data.Dataset):
             patches.append(patch)
             patch_level_coords.append(keypoint)
 
-        match.target_patches = torch.stack(patches)
-        match.patch_level_target_coords = torch.tensor(patch_level_coords, dtype=torch.int32)
+        target_patches = torch.stack(patches)
+        patch_level_target_coords = torch.tensor(patch_level_coords, dtype=torch.int32)
+
+        return target_patches, patch_level_target_coords
+
+    def _prepare_images(self, idx):
+        pair_name = self.pair_names[idx]
+        patch_indices = self.patch_indices[pair_name]
+
+        reference_coords = self.references_group[pair_name][()][patch_indices].astype(np.int32)
+        target_coords = self.targets_group[pair_name][()][patch_indices].astype(np.int32)
+        assert reference_coords.shape == target_coords.shape
+
+        reference_image_name, target_image_name = pair_name.split('_')
+
+        reference_coords = [(x, y) for x, y in reference_coords]
+        references = self._prepare_references(
+            reference_image_name,
+            reference_coords
+        )
+
+        target_coords = [(x, y) for x, y in target_coords]
+        targets = self._prepare_targets(
+            target_image_name,
+            target_coords
+        )
+
+        return references, targets
 
     def __getitem__(self, idx):
         if not hasattr(self, 'file'):
@@ -261,21 +290,16 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         assert hasattr(self, 'file')
 
-        match = Match()
+        references, targets = self._prepare_images(idx)
+        reference_patches, patch_level_reference_coords = references
+        target_patches, patch_level_target_coords = targets
 
-        package = self._prepare_images(idx)
-        reference_image, target_image, image_level_reference_coords, image_level_target_coords = package
+        match = Match(
+            reference_patches,
+            target_patches,
 
-        self._prepare_reference_patches(
-            reference_image,
-            image_level_reference_coords,
-            match
-        )
-
-        self._prepare_target_patches(
-            target_image,
-            image_level_target_coords,
-            match
+            patch_level_reference_coords,
+            patch_level_target_coords,
         )
 
         return match
@@ -288,23 +312,29 @@ class MatchesDataModule(L.LightningDataModule):
         self.num_workers = 0 if config.task.eda_mode else os.cpu_count()
         self.persistent_workers = not config.task.eda_mode
 
-        self.patch_augmentation_no_kp = A.Compose(
+        self.image_augmentation_no_kp = A.Compose(
             transforms=[
-                A.Defocus(p=0.3, radius=2),
+                A.Defocus(p=0.3, radius=1),
             ]
         )
 
-        always_apply = config.task.eda_mode
-        pad_mode = cv2.BORDER_CONSTANT  # cv2.BORDER_REPLICATE
-        pad_val = (0, 255, 0) if config.task.eda_mode else 0
+        pad_mode = cv2.BORDER_CONSTANT  # cv2.BORDER_REPLICATE cv2.BORDER_CONSTANT
+        pad_val = 0  # (0, 255, 0) if config.task.eda_mode else 0
+        p = 1 if config.task.eda_mode else 0.4
 
-        self.patch_augmentation_kp = A.Compose(
+        self.image_augmentation_kp = A.Compose(
             transforms=[
-                A.Rotate(p=0.6, always_apply=always_apply),
-                A.Perspective(fit_output=True, pad_mode=pad_mode, pad_val=pad_val, p=0.6, always_apply=always_apply),
-                # A.HorizontalFlip(p=0.5),
-                # A.VerticalFlip(p=0.5),
-                # A.RandomRotate90(p=0.5),
+                A.Perspective(
+                    # scale=(0.1, 0.3),
+                    p=p,
+                    fit_output=True,
+                    pad_mode=pad_mode,
+                    pad_val=pad_val,
+                ),
+                A.SafeRotate(
+                    p=p,
+                    limit=(-45, 45)
+                ),
             ],
             keypoint_params=A.KeypointParams(format='xy')
         )
@@ -319,12 +349,10 @@ class MatchesDataModule(L.LightningDataModule):
         ])
 
         self.dataset: Dict[str, MatchesDataset] = {}
-        self.patch_indices = OrderedDict()
 
         self.file = None
         self.references_group = None
         self.targets_group = None
-        self.pair_names = {}
 
     def _open_file(self):
         if self.file is None:
@@ -339,55 +367,68 @@ class MatchesDataModule(L.LightningDataModule):
             self.references_group = None
             self.targets_group = None
 
-    def prepare_data(self):
-        self._open_file()
-
-        if config.task.single_video_mode:
-            self.prepare_single_video_mode_data()
-
-        self._close_file()
-
     def prepare_single_video_mode_data(self):
+        patch_indices = OrderedDict()
+
         for a, b in zip(self.references_group.items(), self.targets_group.items()):
             (pair_name, ref_dataset), (_, tar_dataset) = a, b
             if not isinstance(ref_dataset, h5py.Dataset) or not isinstance(tar_dataset, h5py.Dataset):
                 continue
 
             reference_coords = ref_dataset[()]
+            target_coords = tar_dataset[()]
 
             reference_coords_len = len(reference_coords)
+            target_coords_len = len(target_coords)
+            assert reference_coords_len == target_coords_len
+
             N = min(reference_coords_len, config.train.num_patches_per_image)
 
-            patch_indices = random.sample(range(reference_coords_len), N)
-            self.patch_indices[pair_name] = patch_indices
+            patch_indices_list = random.sample(range(reference_coords_len), N)
+            patch_indices[pair_name] = patch_indices_list
 
-        pair_names = list(self.references_group.keys())
-        split_index = int(len(pair_names) * 0.8)
-        self.pair_names['train'] = pair_names[:split_index]
-        self.pair_names['test'] = pair_names[split_index:]
+        pair_names_list = list(self.references_group.keys())
+        split_index = int(len(pair_names_list) * 0.8)
+
+        pair_names = {
+            'train': pair_names_list[:split_index],
+            'test': pair_names_list[split_index:]
+        }
+
+        return pair_names, patch_indices
 
     def setup(self, stage=None):
         self._open_file()
 
+        pair_names, patch_indices = None, None
+
+        if config.task.single_video_mode:
+            pair_names, patch_indices = self.prepare_single_video_mode_data()
+
+        assert pair_names is not None, "pair_names is None"
+        assert patch_indices is not None, "patch_indices is None"
+
         if stage == "fit":
-            split_index = int(len(self.pair_names['train']) * 0.8)
-            train_pair_names = self.pair_names['train'][:split_index]
-            val_pair_names = self.pair_names['train'][split_index:]
+            split_index = int(len(pair_names['train']) * 0.8)
+            train_pair_names = pair_names['train'][:split_index]
+            val_pair_names = pair_names['train'][split_index:]
 
             self.dataset['train'] = MatchesDataset(
                 stage="train",
                 pair_names=train_pair_names,
-                patch_indices=self.patch_indices,
+                patch_indices=patch_indices,
+                perturb_target=True,  # True False
 
                 patch_normalize=self.patch_normalize,
-                patch_augmentation_no_kp=self.patch_augmentation_no_kp,
-                # patch_augmentation_kp=self.patch_augmentation_kp,
+                image_augmentation_no_kp=self.image_augmentation_no_kp,
+                image_augmentation_kp=self.image_augmentation_kp,
             )
 
             self.dataset['val'] = MatchesDataset(
                 stage="val",
                 pair_names=val_pair_names,
-                patch_indices=self.patch_indices,
+                patch_indices=patch_indices,
+                perturb_target=True,
 
                 patch_normalize=self.patch_normalize,
             )
@@ -397,9 +438,9 @@ class MatchesDataModule(L.LightningDataModule):
 
         if stage == "test":
             self.dataset['test'] = MatchesDataset(
-                stage="train",
-                pair_names=self.pair_names['test'],
-                patch_indices=self.patch_indices,
+                stage="test",
+                pair_names=pair_names['test'],
+                patch_indices=patch_indices,
                 patch_normalize=self.patch_normalize,
             )
 

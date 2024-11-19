@@ -12,16 +12,22 @@ def train():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Using device: {device}")
 
-    neptune_logger, tensorboard_logger = MyLogger.get_loggers()
+    loggers = MyLogger.get_loggers()
+    # neptune_logger, tensorboard_logger = loggers
+    tensorboard_logger = MyLogger.get_loggers()
 
-    light = Light(neptune_logger, tensorboard_logger)
+    light = Light(
+        neptune_logger=None,
+        tensorboard_logger=tensorboard_logger
+    )
+
     dm = MatchesDataModule()
 
-    neptune_logger.log_model_summary(model=light, max_depth=-1)
+    # neptune_logger.log_model_summary(model=light, max_depth=-1)
 
     trainer = pl.Trainer(
         default_root_dir=config.paths.roots.output,
-        logger=[neptune_logger, tensorboard_logger],
+        logger=loggers,
         devices='auto',
         accelerator="auto",
         max_epochs=config.train.max_epochs,
