@@ -311,11 +311,11 @@ class MatchesDataModule(L.LightningDataModule):
 
         self.patch_normalize = T.Compose([
             T.ToTensor(),
-            T.Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225]
-            ),
-            # T.Normalize(mean=[0.5], std=[0.5]),
+            # T.Normalize(
+            #     mean=[0.485, 0.456, 0.406],
+            #     std=[0.229, 0.224, 0.225]
+            # ),
+            T.Normalize(mean=[0.5], std=[0.5]),
         ])
 
         self.dataset: Dict[str, MatchesDataset] = {}
