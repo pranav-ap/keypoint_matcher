@@ -207,7 +207,7 @@ class MatchesDataset(torch.utils.data.Dataset):
             left, upper, right, lower = self._get_patch_boundary(image, keypoint, padded_patch_size)
             patch, keypoint = self._center_crop(image, keypoint, left, upper, right, lower)
 
-            if self.patch_augmentation_no_kp:
+            if self.patch_augmentation_no_kp and self.stage == 'train':
                 patch_np = np.array(patch)
                 transformed = self.patch_augmentation_no_kp(
                     image=patch_np
@@ -311,7 +311,11 @@ class MatchesDataModule(L.LightningDataModule):
 
         self.patch_normalize = T.Compose([
             T.ToTensor(),
-            T.Normalize(mean=[0.5], std=[0.5]),
+            T.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]
+            ),
+            # T.Normalize(mean=[0.5], std=[0.5]),
         ])
 
         self.dataset: Dict[str, MatchesDataset] = {}
@@ -377,7 +381,7 @@ class MatchesDataModule(L.LightningDataModule):
 
                 patch_normalize=self.patch_normalize,
                 patch_augmentation_no_kp=self.patch_augmentation_no_kp,
-                patch_augmentation_kp=self.patch_augmentation_kp,
+                # patch_augmentation_kp=self.patch_augmentation_kp,
             )
 
             self.dataset['val'] = MatchesDataset(
