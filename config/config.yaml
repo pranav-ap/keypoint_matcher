@@ -7,7 +7,7 @@ task:
     cam: cam0
 
     single_video_mode: True
-    eda_mode: True  # True False
+    eda_mode: False  # True False
 
 experiment:
     model: resnet
@@ -17,7 +17,7 @@ experiment:
 
 paths:
     roots:
-        ws: D:/thesis_code # /home/stud/ath/ath_ws  D:/thesis_code
+        ws: /home/stud/ath/ath_ws # /home/stud/ath/ath_ws  D:/thesis_code
         mav: ${paths.roots.ws}/datasets/${task.dataset}/${task.video}/mav0
         project: ${paths.roots.ws}/keypoint_matcher
         output: ${paths.roots.project}/output
@@ -46,7 +46,7 @@ train:
     overfit_batches: 0
 
     patience: 5
-    max_epochs: 5
+    max_epochs: 50
     check_val_every_n_epoch: 1
     num_sanity_val_steps: 1
     log_every_n_steps: 1

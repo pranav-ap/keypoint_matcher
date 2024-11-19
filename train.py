@@ -13,17 +13,17 @@ def train():
     logger.info(f"Using device: {device}")
 
     loggers = MyLogger.get_loggers()
-    # neptune_logger, tensorboard_logger = loggers
-    tensorboard_logger = MyLogger.get_loggers()
+    neptune_logger, tensorboard_logger = loggers
+    # tensorboard_logger = MyLogger.get_loggers()
 
     light = Light(
-        neptune_logger=None,
+        neptune_logger=neptune_logger,
         tensorboard_logger=tensorboard_logger
     )
 
     dm = MatchesDataModule()
 
-    # neptune_logger.log_model_summary(model=light, max_depth=-1)
+    neptune_logger.log_model_summary(model=light, max_depth=-1)
 
     trainer = pl.Trainer(
         default_root_dir=config.paths.roots.output,
