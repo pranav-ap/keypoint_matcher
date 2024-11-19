@@ -22,7 +22,7 @@ dependencies:
     - diffusers
     - datasets
     - click
-    - timm
+    - neptune
     - pip:
         - opencv-python
         - albumentations

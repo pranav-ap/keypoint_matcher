@@ -29,19 +29,19 @@ class Match:
 
 
 def match_collate_fn(batch):
-    channel = 3
+    channels = 3
 
-    reference_patches = torch.stack([match.reference_patches for match in batch])
-    reference_patches = reference_patches.reshape(-1, channel, config.image.patch_size, config.image.patch_size)
+    reference_patches = torch.cat([match.reference_patches for match in batch], dim=0)
+    # reference_patches = reference_patches.reshape(-1, channels, config.image.patch_size, config.image.patch_size)
 
-    target_patches = torch.stack([match.target_patches for match in batch])
-    target_patches = target_patches.reshape(-1, channel, config.image.patch_size, config.image.patch_size)
+    target_patches = torch.cat([match.target_patches for match in batch], dim=0)
+    # target_patches = target_patches.reshape(-1, channels, config.image.patch_size, config.image.patch_size)
 
-    patch_level_reference_coords = torch.stack([match.patch_level_reference_coords for match in batch])
-    patch_level_reference_coords = patch_level_reference_coords.reshape(-1, 2)
+    patch_level_reference_coords = torch.cat([match.patch_level_reference_coords for match in batch], dim=0)
+    # patch_level_reference_coords = patch_level_reference_coords.reshape(-1, 2)
 
-    patch_level_target_coords = torch.stack([match.patch_level_target_coords for match in batch])
-    patch_level_target_coords = patch_level_target_coords.reshape(-1, 2)
+    patch_level_target_coords = torch.cat([match.patch_level_target_coords for match in batch], dim=0)
+    # patch_level_target_coords = patch_level_target_coords.reshape(-1, 2)
 
     return Match(
         reference_patches,
@@ -317,15 +317,31 @@ class MatchesDataModule(L.LightningDataModule):
         self.dataset: Dict[str, MatchesDataset] = {}
         self.patch_indices = OrderedDict()
 
-        self.file = h5py.File(config.paths.matches, mode='r')
-        self.references_group = self.file[f'{config.task.video}/{config.task.cam}/reference_coords']
-        self.targets_group = self.file[f'{config.task.video}/{config.task.cam}/target_coords']
-
+        self.file = None
+        self.references_group = None
+        self.targets_group = None
         self.pair_names = {}
 
+    def _open_file(self):
+        if self.file is None:
+            self.file = h5py.File(config.paths.matches, mode='r')
+            self.references_group = self.file[f'{config.task.video}/{config.task.cam}/reference_coords']
+            self.targets_group = self.file[f'{config.task.video}/{config.task.cam}/target_coords']
+
+    def _close_file(self):
+        if self.file is not None:
+            self.file.close()
+            self.file = None
+            self.references_group = None
+            self.targets_group = None
+
     def prepare_data(self):
+        self._open_file()
+
         if config.task.single_video_mode:
             self.prepare_single_video_mode_data()
+
+        self._close_file()
 
     def prepare_single_video_mode_data(self):
         for a, b in zip(self.references_group.items(), self.targets_group.items()):
@@ -347,6 +363,8 @@ class MatchesDataModule(L.LightningDataModule):
         self.pair_names['test'] = pair_names[split_index:]
 
     def setup(self, stage=None):
+        self._open_file()
+
         if stage == "fit":
             split_index = int(len(self.pair_names['train']) * 0.8)
             train_pair_names = self.pair_names['train'][:split_index]
@@ -384,8 +402,7 @@ class MatchesDataModule(L.LightningDataModule):
             logger.info(f"Test Dataset  : {len(self.dataset['test'])} samples")
 
     def teardown(self, stage=None):
-        if self.file:
-            self.file.close()
+        self._close_file()
 
     def train_dataloader(self):
         return torch.utils.data.DataLoader(

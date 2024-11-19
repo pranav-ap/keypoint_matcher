@@ -2,6 +2,7 @@ log_level: TRACE  # TRACE WARNING
 
 task:
     dataset: monado_slam
+    # MOO07_mapping_easy  MOO11_short_3_backandforth
     video: MOO07_mapping_easy
     cam: cam0
 

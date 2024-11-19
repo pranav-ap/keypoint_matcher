@@ -40,6 +40,8 @@ def train():
     if trainer.checkpoint_callback.best_model_path:
         logger.info(f"Best model path : {trainer.checkpoint_callback.best_model_path}")
 
+    trainer.test(light, datamodule=dm)
+
 
 def prep_directories():
     logger.info("Clearing Directories")
