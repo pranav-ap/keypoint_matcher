@@ -228,7 +228,7 @@ class MatchesDataset(torch.utils.data.Dataset):
                 assert len(keypoints) == 1, "Expected a single transformed keypoint"
                 keypoint = (int(keypoints[0][0]), int(keypoints[0][1]))
 
-            x, y = center_point = keypoint
+            x, y = keypoint
 
             if self.stage in ['val', 'test']:
                 random.seed(index)

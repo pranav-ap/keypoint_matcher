@@ -34,7 +34,7 @@ image:
     # [width, height]
     original_image_shape: [640, 480]  # [640, 480]
     patch_size: 32
-    patch_border: 2 # pixels
+    patch_border: 4 # pixels
 
 train:
     train_batch_size: 4
@@ -53,7 +53,7 @@ train:
     learning_rate: 1e-4
 
 val:
-    num_patch_pairs_to_save: 40
+    num_patch_pairs_to_save: 24
 
 test:
     batch_size: 4

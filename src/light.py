@@ -3,14 +3,14 @@ import os
 import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
-from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint, TQDMProgressBar, ModelSummary
-# noinspection PyProtectedMember
+from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint, TQDMProgressBar
 from neptune.types import File
 
 from config import config
-from utils import show_batch, get_tensor_grid, logger
+from utils import show_batch, get_tensor_grid
 from .dataset import Match
-from .model import DescriptorModel, MatcherModel
+from .descriptors import ResNet_DescriptorModel as DescriptorModel
+from .matcher import MatcherModel
 
 torch.set_float32_matmul_precision('medium')
 
@@ -165,7 +165,7 @@ class Light(pl.LightningModule):
             batch.reference_patches, batch.target_patches,
             batch.patch_level_reference_coords, patch_level_target_coords,
             limit_count=limit_count,
-            n_columns=2,
+            n_columns=3,
         )
 
         out_path = config.paths.output.val_images if stage == 'val' else config.paths.output.test_images
@@ -217,12 +217,10 @@ class Light(pl.LightningModule):
             monitor='val/loss',
             mode='min',
             dirpath=config.paths.output.checkpoints,
-            filename=f"best_checkpoint_{self.current_epoch}",
+            filename=f"best_checkpoint_epoch_{self.current_epoch}",
             save_top_k=1,
             save_last=True,
         )
-
-        # summary_callback = ModelSummary(max_depth=-1)
 
         progress_bar_callback = TQDMProgressBar(refresh_rate=5)
         lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')

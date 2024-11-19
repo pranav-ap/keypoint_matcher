@@ -1,3 +1,4 @@
 from .dataset import MatchesDataModule
 from .light import Light
-from .model import DescriptorModel, MatcherModel
+from .descriptors import ResNet_DescriptorModel
+from .matcher import MatcherModel
