@@ -16,15 +16,23 @@ class MyLogger:
 
     @staticmethod
     def init_loggers():
-        if MyLogger.neptune_logger is None:
+        if 'neptune' in config.loggers and MyLogger.neptune_logger is None:
             MyLogger.neptune_logger = MyLogger.get_neptune_logger()
 
-        if MyLogger.tensorboard_logger is None:
+        if 'tensorboard' in config.loggers and  MyLogger.tensorboard_logger is None:
             MyLogger.tensorboard_logger = MyLogger.get_tensorboard_logger()
 
     @staticmethod
     def get_loggers():
-        return [MyLogger.neptune_logger, MyLogger.tensorboard_logger]
+        loggers = []
+
+        if MyLogger.neptune_logger is not None:
+            loggers.append(MyLogger.neptune_logger)
+
+        if MyLogger.tensorboard_logger is not None:
+            loggers.append(MyLogger.tensorboard_logger)
+
+        return loggers
 
     @staticmethod
     def init_loguru():
