@@ -1,4 +1,4 @@
-name: common_env
+name: keypoint_matcher_env
 channels:
     - defaults
     - conda-forge
