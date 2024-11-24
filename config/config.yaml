@@ -7,7 +7,7 @@ task:
     cam: cam0
 
     single_video_mode: True
-    eda_mode: True  # True False
+    eda_mode: False  # True False
 
 experiment:
     model: resnet
@@ -47,7 +47,7 @@ train:
     overfit_batches: 0
 
     patience: 5
-    max_epochs: 100
+    max_epochs: 5
     check_val_every_n_epoch: 1
     num_sanity_val_steps: 1
     log_every_n_steps: 1
@@ -62,5 +62,5 @@ test:
 
 loggers:
     - tensorboard
-    - neptune
+#    - neptune
 

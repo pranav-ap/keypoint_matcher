@@ -315,7 +315,7 @@ class MatchesDataModule(L.LightningDataModule):
         self.image_augmentation_no_kp = A.Compose(
             transforms=[
                 A.Defocus(p=0.3, radius=1),
-                A.GaussNoise(p=0.3, var_limit=(20.0, 100.0)),
+                A.GaussNoise(p=0.3, var_limit=(20.0, 70.0)),
             ]
         )
 
