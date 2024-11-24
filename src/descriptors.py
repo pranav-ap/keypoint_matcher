@@ -68,11 +68,10 @@ class ResNet_DescriptorModel(nn.Module):
     def __init__(self):
         super().__init__()
 
-        embedding_dim = 64
+        embedding_dim = 256
 
         self.model = nn.Sequential(
-            ResidualBlock(3, 32, dilation=2),
-            ResidualBlock(32, 64),
+            ResidualBlock(3, 64, dilation=2),
             ResidualBlock(64, 128),
             ResidualBlock(128, embedding_dim),
         )

@@ -3,7 +3,7 @@ log_level: TRACE  # TRACE WARNING
 task:
     dataset: monado_slam
     # MOO07_mapping_easy  MOO11_short_3_backandforth
-    video: MOO07_mapping_easy
+    video: MOO11_short_3_backandforth
     cam: cam0
 
     single_video_mode: True
@@ -25,6 +25,7 @@ paths:
     output:
         logs: ${paths.roots.output}/${experiment.name}/logs
         checkpoints: ${paths.roots.output}/${experiment.name}/checkpoints
+        train_images: ${paths.roots.output}/${experiment.name}/images/train
         val_images: ${paths.roots.output}/${experiment.name}/images/val
         test_images: ${paths.roots.output}/${experiment.name}/images/test
 
@@ -46,7 +47,7 @@ train:
     overfit_batches: 0
 
     patience: 5
-    max_epochs: 50
+    max_epochs: 100
     check_val_every_n_epoch: 1
     num_sanity_val_steps: 1
     log_every_n_steps: 1

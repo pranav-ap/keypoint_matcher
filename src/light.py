@@ -76,13 +76,37 @@ class Light(pl.LightningModule):
             target_patch_descriptors_pred
         )
 
+        target_patch_level_coords_pred = self.matcher_model.get_best_target_coords(
+            reference_patch_descriptors_pred,
+            target_patch_descriptors_pred,
+            batch.patch_level_reference_coords
+        )
+
+        match_loss = self._compute_match_loss(
+            batch.patch_level_target_coords,
+            target_patch_level_coords_pred
+        )
+
         metrics = {
             "train/loss": descriptor_loss,
+            "train/match_loss": match_loss,
         }
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
 
-        return descriptor_loss
+        if batch_idx == 0:
+            limit_count = config.val.num_patch_pairs_to_save
+            self._log_images(
+                batch,
+                target_patch_level_coords_pred,
+                limit_count=limit_count,
+                stage='train'
+            )
+
+        alpha = 0.6
+        total_loss = descriptor_loss * (1 - alpha) + alpha * match_loss
+
+        return total_loss
 
     @torch.no_grad()
     def validation_step(self, batch: Match, batch_idx):
@@ -168,7 +192,13 @@ class Light(pl.LightningModule):
             n_columns=3,
         )
 
-        out_path = config.paths.output.val_images if stage == 'val' else config.paths.output.test_images
+        out_path = config.paths.output.test_images
+
+        if stage == 'train':
+            out_path = config.paths.output.train_images
+        elif stage == 'val':
+            out_path = config.paths.output.val_images 
+
         name = f'{stage}_global_step_{self.global_step}.png'
         out_path = os.path.join(out_path, name)
         image_grid.save(out_path)

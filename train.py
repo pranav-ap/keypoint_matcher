@@ -16,9 +16,16 @@ def train():
     neptune_logger, tensorboard_logger = loggers
     # tensorboard_logger = MyLogger.get_loggers()
 
-    light = Light(
+    # light = Light(
+    #     neptune_logger=neptune_logger,
+    #     tensorboard_logger=tensorboard_logger
+    # )
+
+    checkpoint_path = './output/checkpoints/best_checkpoint.ckpt'
+    light = Light.load_from_checkpoint(
+        checkpoint_path,
         neptune_logger=neptune_logger,
-        tensorboard_logger=tensorboard_logger
+        tensorboard_logger=tensorboard_logger,
     )
 
     dm = MatchesDataModule()
@@ -49,6 +56,7 @@ def train():
 
 def prep_directories():
     logger.info("Clearing Directories")
+    make_clear_directory(config.paths.output.train_images)
     make_clear_directory(config.paths.output.val_images)
     make_clear_directory(config.paths.output.checkpoints)
 
