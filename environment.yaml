@@ -20,11 +20,9 @@ dependencies:
     - h5py
     - lightning
     - diffusers
-    - datasets
-    - click
     - neptune
     - pip:
-        - opencv-python
         - albumentations
+        - opencv-python
         - tensorboard
         

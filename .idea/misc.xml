@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="C:\Users\prana\miniconda3" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="common_env" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="keypoint_matcher_env" project-jdk-type="Python SDK" />
 </project>

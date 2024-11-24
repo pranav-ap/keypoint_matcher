@@ -3,11 +3,11 @@ log_level: TRACE  # TRACE WARNING
 task:
     dataset: monado_slam
     # MOO07_mapping_easy  MOO11_short_3_backandforth
-    video: MOO11_short_3_backandforth
+    video: MOO07_mapping_easy
     cam: cam0
 
     single_video_mode: True
-    eda_mode: False  # True False
+    eda_mode: True  # True False
 
 experiment:
     model: resnet
@@ -17,7 +17,7 @@ experiment:
 
 paths:
     roots:
-        ws: /home/stud/ath/ath_ws # /home/stud/ath/ath_ws  D:/thesis_code
+        ws: D:/thesis_code # /home/stud/ath/ath_ws  D:/thesis_code
         mav: ${paths.roots.ws}/datasets/${task.dataset}/${task.video}/mav0
         project: ${paths.roots.ws}/keypoint_matcher
         output: ${paths.roots.project}/output

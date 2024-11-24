@@ -13,24 +13,24 @@ def train():
     logger.info(f"Using device: {device}")
 
     loggers = MyLogger.get_loggers()
-    neptune_logger, tensorboard_logger = loggers
-    # tensorboard_logger = MyLogger.get_loggers()
+    # neptune_logger, tensorboard_logger = loggers
+    tensorboard_logger = MyLogger.get_loggers()[0]
 
-    # light = Light(
-    #     neptune_logger=neptune_logger,
-    #     tensorboard_logger=tensorboard_logger
-    # )
-
-    checkpoint_path = './output/checkpoints/best_checkpoint.ckpt'
-    light = Light.load_from_checkpoint(
-        checkpoint_path,
-        neptune_logger=neptune_logger,
-        tensorboard_logger=tensorboard_logger,
+    light = Light(
+        # neptune_logger=neptune_logger,
+        tensorboard_logger=tensorboard_logger
     )
+
+    # checkpoint_path = './output/checkpoints/best_checkpoint.ckpt'
+    # light = Light.load_from_checkpoint(
+    #     checkpoint_path,
+    #     neptune_logger=neptune_logger,
+    #     tensorboard_logger=tensorboard_logger,
+    # )
 
     dm = MatchesDataModule()
 
-    neptune_logger.log_model_summary(model=light, max_depth=-1)
+    # neptune_logger.log_model_summary(model=light, max_depth=-1)
 
     trainer = pl.Trainer(
         default_root_dir=config.paths.roots.output,
@@ -50,7 +50,9 @@ def train():
 
     trainer.fit(light, datamodule=dm)
 
+    # noinspection PyUnresolvedReferences
     if trainer.checkpoint_callback.best_model_path:
+        # noinspection PyUnresolvedReferences
         logger.info(f"Best model path : {trainer.checkpoint_callback.best_model_path}")
 
 

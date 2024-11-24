@@ -8,7 +8,7 @@
       <excludeFolder url="file://$MODULE_DIR$/output" />
       <excludeFolder url="file://$MODULE_DIR$/.neptune" />
     </content>
-    <orderEntry type="jdk" jdkName="common_env" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="keypoint_matcher_env" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>

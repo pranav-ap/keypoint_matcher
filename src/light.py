@@ -9,8 +9,7 @@ from neptune.types import File
 from config import config
 from utils import show_batch, get_tensor_grid
 from .dataset import Match
-from .descriptors import ResNet_DescriptorModel as DescriptorModel
-from .matcher import MatcherModel
+from .model import MatcherModel
 
 torch.set_float32_matmul_precision('medium')
 
@@ -22,7 +21,6 @@ class Light(pl.LightningModule):
         self.neptune_logger = neptune_logger
         self.tensorboard_logger = tensorboard_logger
 
-        self.descriptor_model = DescriptorModel()
         self.matcher_model = MatcherModel()
 
         self.learning_rate = config.train.learning_rate
@@ -37,59 +35,43 @@ class Light(pl.LightningModule):
             ]
         )
 
-    def forward(self, reference_patches, target_patches, patch_level_reference_coords):
-        reference_patch_descriptors_pred = self.descriptor_model(reference_patches)
-        target_patch_descriptors_pred = self.descriptor_model(target_patches)
-
-        target_patch_level_coords_pred = self.matcher_model.get_best_target_coords(
-            reference_patch_descriptors_pred,
-            target_patch_descriptors_pred,
-            patch_level_reference_coords
+    def forward(self, reference_patches, target_patches, reference_coords):
+        target_coords_pred = self.matcher_model(
+            reference_patches,
+            target_patches,
+            reference_coords,
         )
 
-        return target_patch_level_coords_pred
+        return target_coords_pred
 
     @staticmethod
-    def _compute_match_loss(target_patch_level_coords, target_patch_level_coords_pred):
-        match_loss = F.mse_loss(
-            target_patch_level_coords.float(),
-            target_patch_level_coords_pred.float()
+    def _compute_loss(target_coords, target_coords_pred):
+        loss = F.mse_loss(
+            target_coords.float(),
+            target_coords_pred.float()
         )
 
-        return match_loss
+        return loss
 
-    @staticmethod
-    def _compute_descriptor_loss(reference_patch_descriptors, target_patch_descriptors):
-        patch_loss = F.mse_loss(
-            reference_patch_descriptors,
-            target_patch_descriptors
+    def _shared_step(self, batch: Match):
+        target_coords_pred = self.matcher_model(
+            batch.reference_patches,
+            batch.target_patches,
+            batch.patch_level_reference_coords,
         )
 
-        return patch_loss
+        loss = self._compute_loss(
+            batch.patch_level_target_coords,
+            target_coords_pred
+        )
+
+        return loss, target_coords_pred
 
     def training_step(self, batch: Match, batch_idx):
-        reference_patch_descriptors_pred = self.descriptor_model(batch.reference_patches)
-        target_patch_descriptors_pred = self.descriptor_model(batch.target_patches)
-
-        descriptor_loss = self._compute_descriptor_loss(
-            reference_patch_descriptors_pred,
-            target_patch_descriptors_pred
-        )
-
-        target_patch_level_coords_pred = self.matcher_model.get_best_target_coords(
-            reference_patch_descriptors_pred,
-            target_patch_descriptors_pred,
-            batch.patch_level_reference_coords
-        )
-
-        match_loss = self._compute_match_loss(
-            batch.patch_level_target_coords,
-            target_patch_level_coords_pred
-        )
+        loss, target_coords_pred = self._shared_step(batch)
 
         metrics = {
-            "train/loss": descriptor_loss,
-            "train/match_loss": match_loss,
+            "train/loss": loss,
         }
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
@@ -98,40 +80,19 @@ class Light(pl.LightningModule):
             limit_count = config.val.num_patch_pairs_to_save
             self._log_images(
                 batch,
-                target_patch_level_coords_pred,
+                target_coords_pred,
                 limit_count=limit_count,
                 stage='train'
             )
 
-        alpha = 0.6
-        total_loss = descriptor_loss * (1 - alpha) + alpha * match_loss
-
-        return total_loss
+        return loss
 
     @torch.no_grad()
     def validation_step(self, batch: Match, batch_idx):
-        reference_patch_descriptors_pred = self.descriptor_model(batch.reference_patches)
-        target_patch_descriptors_pred = self.descriptor_model(batch.target_patches)
-
-        descriptor_loss = self._compute_descriptor_loss(
-            reference_patch_descriptors_pred,
-            target_patch_descriptors_pred
-        )
-
-        target_patch_level_coords_pred = self.matcher_model.get_best_target_coords(
-            reference_patch_descriptors_pred,
-            target_patch_descriptors_pred,
-            batch.patch_level_reference_coords
-        )
-
-        match_loss = self._compute_match_loss(
-            batch.patch_level_target_coords,
-            target_patch_level_coords_pred
-        )
+        loss, target_coords_pred = self._shared_step(batch)
 
         metrics = {
-            "val/loss": descriptor_loss,
-            "val/match_loss": match_loss,
+            "val/loss": loss,
         }
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
@@ -140,7 +101,7 @@ class Light(pl.LightningModule):
             limit_count = config.val.num_patch_pairs_to_save
             self._log_images(
                 batch,
-                target_patch_level_coords_pred,
+                target_coords_pred,
                 limit_count=limit_count,
                 stage='val'
             )
@@ -149,45 +110,29 @@ class Light(pl.LightningModule):
 
     @torch.no_grad()
     def test_step(self, batch: Match, batch_idx):
-        reference_patch_descriptors_pred = self.descriptor_model(batch.reference_patches)
-        target_patch_descriptors_pred = self.descriptor_model(batch.target_patches)
-
-        descriptor_loss = self._compute_descriptor_loss(
-            reference_patch_descriptors_pred,
-            target_patch_descriptors_pred
-        )
-
-        target_patch_level_coords_pred = self.matcher_model.get_best_target_coords(
-            reference_patch_descriptors_pred,
-            target_patch_descriptors_pred,
-            batch.patch_level_reference_coords
-        )
-
-        match_loss = self._compute_match_loss(
-            batch.patch_level_target_coords,
-            target_patch_level_coords_pred
-        )
+        loss, target_coords_pred = self._shared_step(batch)
 
         metrics = {
-            "test/loss": descriptor_loss,
-            "test/match_loss": match_loss,
+            "test/loss": loss,
         }
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
 
         if batch_idx == 0:
+            limit_count = config.val.num_patch_pairs_to_save
             self._log_images(
                 batch,
-                target_patch_level_coords_pred,
+                target_coords_pred,
+                limit_count=limit_count,
                 stage='test'
             )
 
         return metrics
 
-    def _log_images(self, batch, patch_level_target_coords, limit_count=None, stage=None):
+    def _log_images(self, batch, target_coords, limit_count=None, stage=None):
         image_grid = show_batch(
             batch.reference_patches, batch.target_patches,
-            batch.patch_level_reference_coords, patch_level_target_coords,
+            batch.patch_level_reference_coords, target_coords,
             limit_count=limit_count,
             n_columns=3,
         )
