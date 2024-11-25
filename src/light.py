@@ -47,8 +47,8 @@ class Light(pl.LightningModule):
     @staticmethod
     def _compute_loss(target_coords, target_coords_pred):
         loss = F.mse_loss(
-            target_coords_pred,
-            target_coords.float(),
+            target_coords_pred / 31.0,
+            target_coords.float() / 31.0,
         )
 
         return loss
@@ -164,12 +164,12 @@ class Light(pl.LightningModule):
                 name=name,
             )
 
-        if self.tensorboard_logger is not None:
-            self.tensorboard_logger.experiment.add_images(
-                tag=f"{stage}_images",
-                img_tensor=get_tensor_grid(image_grid),
-                global_step=self.global_step
-            )
+        # if self.tensorboard_logger is not None:
+        #     self.tensorboard_logger.experiment.add_images(
+        #         tag=f"{stage}_images",
+        #         img_tensor=get_tensor_grid(image_grid),
+        #         global_step=self.global_step
+        #     )
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(

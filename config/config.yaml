@@ -3,7 +3,7 @@ log_level: TRACE  # TRACE WARNING
 task:
     dataset: monado_slam
     # MOO07_mapping_easy  MOO11_short_3_backandforth
-    video: MOO07_mapping_easy
+    video: MOO11_short_3_backandforth
     cam: cam0
 
     single_video_mode: True
@@ -17,7 +17,7 @@ experiment:
 
 paths:
     roots:
-        ws: D:/thesis_code # /home/stud/ath/ath_ws  D:/thesis_code
+        ws: /home/stud/ath/ath_ws # /home/stud/ath/ath_ws  D:/thesis_code
         mav: ${paths.roots.ws}/datasets/${task.dataset}/${task.video}/mav0
         project: ${paths.roots.ws}/keypoint_matcher
         output: ${paths.roots.project}/output
@@ -36,7 +36,7 @@ image:
     # [width, height]
     original_image_shape: [640, 480]  # [640, 480]
     patch_size: 32
-    patch_border: 4 # pixels
+    patch_border: 4 # pixels 4
 
 train:
     train_batch_size: 4
@@ -44,12 +44,12 @@ train:
     num_patches_per_image: 20
 
     fast_dev_run: False  # True False
-    overfit_batches: 1
+    overfit_batches: 0
 
     patience: 10
-    max_epochs: 5
+    max_epochs: 100
     check_val_every_n_epoch: 5
-    num_sanity_val_steps: 0
+    num_sanity_val_steps: 1
     log_every_n_steps: 1
     accumulate_grad_batches: 1
     learning_rate: 1e-4
@@ -62,5 +62,5 @@ test:
 
 loggers:
     - tensorboard
-#    - neptune
+    # - neptune
 

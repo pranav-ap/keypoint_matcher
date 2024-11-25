@@ -12,12 +12,10 @@ def train():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Using device: {device}")
 
-    loggers = MyLogger.get_loggers()
-    # neptune_logger, tensorboard_logger = loggers
-    tensorboard_logger = MyLogger.get_loggers()[0]
+    neptune_logger, tensorboard_logger = MyLogger.neptune_logger, MyLogger.tensorboard_logger
 
     light = Light(
-        # neptune_logger=neptune_logger,
+        neptune_logger=neptune_logger,
         tensorboard_logger=tensorboard_logger
     )
 
@@ -34,7 +32,7 @@ def train():
 
     trainer = pl.Trainer(
         default_root_dir=config.paths.roots.output,
-        logger=loggers,
+        logger=[neptune_logger, tensorboard_logger],
         devices='auto',
         accelerator="auto",
         max_epochs=config.train.max_epochs,
@@ -46,6 +44,7 @@ def train():
         overfit_batches=config.train.overfit_batches,
         enable_model_summary=False,
         enable_checkpointing=True,
+        gradient_clip_val=1.0,
     )
 
     trainer.fit(light, datamodule=dm)

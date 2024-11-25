@@ -13,6 +13,8 @@ import torch
 from PIL import Image
 from torchvision import transforms as T
 
+import math
+
 from config import config
 from utils import logger
 
@@ -192,7 +194,6 @@ class MatchesDataset(torch.utils.data.Dataset):
         assert desired_patch_size < image_width
         assert desired_patch_size < image_height
 
-        import math
         padded_patch_size = desired_patch_size * 4
 
         patches = []
@@ -228,12 +229,12 @@ class MatchesDataset(torch.utils.data.Dataset):
             center_point = x, y = keypoint
 
             if self.perturb_target:
-                if self.stage in ['val', 'test']:
+                if self.stage in ['train', 'val', 'test']:
                     random.seed(index)
 
                 perturb_size = (desired_patch_size - config.image.patch_border) // 2
-                perturb_x = random.randint(-perturb_size, perturb_size)
-                perturb_y = random.randint(-perturb_size, perturb_size)
+                perturb_x = np.random.randint(-perturb_size, perturb_size)
+                perturb_y = np.random.randint(-perturb_size, perturb_size)
 
                 center_point = x + perturb_x, y + perturb_y
 
@@ -315,26 +316,26 @@ class MatchesDataModule(L.LightningDataModule):
         self.image_augmentation_no_kp = A.Compose(
             transforms=[
                 A.Defocus(p=0.3, radius=1),
-                A.GaussNoise(p=0.3, var_limit=(20.0, 70.0)),
+                # A.GaussNoise(p=0.3, var_limit=(20.0, 70.0)),
             ]
         )
 
         pad_mode = cv2.BORDER_CONSTANT  # cv2.BORDER_REPLICATE cv2.BORDER_CONSTANT
         pad_val = 0  # (0, 255, 0) if config.task.eda_mode else 0
-        p = 1 if config.task.eda_mode else 0.4
+        p = 1 if config.task.eda_mode else 0.7
 
         self.image_augmentation_kp = A.Compose(
             transforms=[
-                A.Perspective(
-                    # scale=(0.1, 0.3),
-                    p=p,
-                    fit_output=True,
-                    pad_mode=pad_mode,
-                    pad_val=pad_val,
-                ),
+                # A.Perspective(
+                #     # scale=(0.1, 0.3),
+                #     p=p,
+                #     fit_output=True,
+                #     pad_mode=pad_mode,
+                #     pad_val=pad_val,
+                # ),
                 A.SafeRotate(
                     p=p,
-                    limit=(-45, 45)
+                    limit=(-25, 25)
                 ),
             ],
             keypoint_params=A.KeypointParams(format='xy')
@@ -418,10 +419,10 @@ class MatchesDataModule(L.LightningDataModule):
                 stage="train",
                 pair_names=train_pair_names,
                 patch_indices=patch_indices,
-                perturb_target=False,  # True False
+                perturb_target=True,  # True False
 
                 patch_normalize=self.patch_normalize,
-                # image_augmentation_no_kp=self.image_augmentation_no_kp,
+                image_augmentation_no_kp=self.image_augmentation_no_kp,
                 # image_augmentation_kp=self.image_augmentation_kp,
             )
 
@@ -429,7 +430,7 @@ class MatchesDataModule(L.LightningDataModule):
                 stage="val",
                 pair_names=val_pair_names,
                 patch_indices=patch_indices,
-                perturb_target=False,
+                perturb_target=True,
 
                 patch_normalize=self.patch_normalize,
             )
@@ -442,6 +443,7 @@ class MatchesDataModule(L.LightningDataModule):
                 stage="test",
                 pair_names=pair_names['test'],
                 patch_indices=patch_indices,
+
                 patch_normalize=self.patch_normalize,
             )
 
@@ -454,7 +456,7 @@ class MatchesDataModule(L.LightningDataModule):
         return torch.utils.data.DataLoader(
             self.dataset['train'],
             batch_size=config.train.train_batch_size,
-            shuffle=True,
+            shuffle=False,
             num_workers=self.num_workers,
             persistent_workers=self.persistent_workers,
             pin_memory=True,

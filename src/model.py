@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torchvision
-from torchvision.models import mobilenet_v2
 
 from config import config
 from utils import logger
@@ -13,26 +12,30 @@ class MatcherModel(nn.Module):
     def __init__(self):
         super().__init__()
 
-        mobilenet = mobilenet_v2(
+        mobilenet = torchvision.models.mobilenet_v2(
             weights=torchvision.models.MobileNet_V2_Weights.IMAGENET1K_V2,
         )
 
         self.feature_extractor = nn.Sequential(*list(mobilenet.children())[:-1])
 
         for param in self.feature_extractor.parameters():
-            param.requires_grad = False
+            param.requires_grad = False 
 
-        for param in self.feature_extractor[-1].parameters():
+        for param in self.feature_extractor[-10:].parameters():
             param.requires_grad = True
 
         self.mapper = nn.Sequential(
-            nn.Linear(1280 * 2 + 2, 256),
+            nn.Linear(1280 * 2 + 2, 2048),
+            nn.ReLU(),
+            nn.Linear(2048, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 512),
+            nn.ReLU(),
+            nn.Linear(512, 256),
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 2),
+            nn.Linear(128, 2),
             nn.Sigmoid(),
         )
 
@@ -44,7 +47,7 @@ class MatcherModel(nn.Module):
         target_features = target_features.view(target_features.size(0), -1)
 
         reference_coords = reference_coords / 31.0
-        # 2 x 32 x 8 x 8 + 2
+
         combined = torch.cat(
             [reference_features, target_features, reference_coords],
             dim=1
@@ -54,7 +57,7 @@ class MatcherModel(nn.Module):
 
         target_coords = target_coords * 31.0
 
-        target_coords = target_coords.round()
-        target_coords = torch.clamp(target_coords, min=0, max=31)
+        # target_coords = target_coords.round()
+        # target_coords = torch.clamp(target_coords, min=0, max=31)
 
         return target_coords
