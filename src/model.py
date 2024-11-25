@@ -45,13 +45,14 @@ class MatcherModel(nn.Module):
         super().__init__()
 
         self.model = nn.Sequential(
-            ResidualBlock(8, 64, dilation=2),
+            ResidualBlock(8, 64),
             ResidualBlock(64, 128),
             ResidualBlock(128, 256),
         )
 
-        self.global_pool = nn.AvgPool2d((32, 32))
+        self.global_pool = nn.MaxPool2d((32, 32))
         self.fc = nn.Linear(256, 2)
+        self.sig = nn.Sigmoid()
 
         total_trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         logger.info(f"Number of Trainable Parameters : {total_trainable_params}")
@@ -80,8 +81,8 @@ class MatcherModel(nn.Module):
 
         # after FC -> torch.Size([80, 2])
         x = self.fc(x)
+        x = self.sig(x)
 
-        x = torch.clamp(x, min=0, max=1)
         x = x * 31.0
         x = x.round()
         x = torch.clamp(x, min=0, max=31)
