@@ -47,8 +47,8 @@ class Light(pl.LightningModule):
     @staticmethod
     def _compute_loss(target_coords, target_coords_pred):
         loss = F.mse_loss(
+            target_coords_pred,
             target_coords.float(),
-            target_coords_pred.float()
         )
 
         return loss
@@ -68,7 +68,16 @@ class Light(pl.LightningModule):
         return loss, target_coords_pred
 
     def training_step(self, batch: Match, batch_idx):
-        loss, target_coords_pred = self._shared_step(batch)
+        target_coords_pred = self.matcher_model(
+            batch.reference_patches,
+            batch.target_patches,
+            batch.patch_level_reference_coords,
+        )
+
+        loss = self._compute_loss(
+            batch.patch_level_target_coords,
+            target_coords_pred
+        )
 
         metrics = {
             "train/loss": loss,
@@ -165,7 +174,7 @@ class Light(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
             self.matcher_model.parameters(),
-            lr=config.train.learning_rate
+            lr=self.learning_rate
         )
 
         lr_scheduler = {
@@ -194,7 +203,7 @@ class Light(pl.LightningModule):
             monitor='val/loss',
             mode='min',
             dirpath=config.paths.output.checkpoints,
-            filename=f"best_checkpoint_epoch_{self.current_epoch}",
+            filename="best_checkpoint",
             save_top_k=1,
             save_last=True,
         )

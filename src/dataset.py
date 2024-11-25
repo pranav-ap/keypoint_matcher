@@ -342,11 +342,11 @@ class MatchesDataModule(L.LightningDataModule):
 
         self.patch_normalize = T.Compose([
             T.ToTensor(),
-            # T.Normalize(
-            #     mean=[0.485, 0.456, 0.406],
-            #     std=[0.229, 0.224, 0.225]
-            # ),
-            T.Normalize(mean=[0.5], std=[0.5]),
+            T.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]
+            ),
+            # T.Normalize(mean=[0.5], std=[0.5]),
         ])
 
         self.dataset: Dict[str, MatchesDataset] = {}
@@ -418,18 +418,18 @@ class MatchesDataModule(L.LightningDataModule):
                 stage="train",
                 pair_names=train_pair_names,
                 patch_indices=patch_indices,
-                perturb_target=True,  # True False
+                perturb_target=False,  # True False
 
                 patch_normalize=self.patch_normalize,
-                image_augmentation_no_kp=self.image_augmentation_no_kp,
-                image_augmentation_kp=self.image_augmentation_kp,
+                # image_augmentation_no_kp=self.image_augmentation_no_kp,
+                # image_augmentation_kp=self.image_augmentation_kp,
             )
 
             self.dataset['val'] = MatchesDataset(
                 stage="val",
                 pair_names=val_pair_names,
                 patch_indices=patch_indices,
-                perturb_target=True,
+                perturb_target=False,
 
                 patch_normalize=self.patch_normalize,
             )

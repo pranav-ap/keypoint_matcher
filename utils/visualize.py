@@ -8,8 +8,15 @@ to_tensor = T.ToTensor()
 to_pil = T.ToPILImage()
 
 denormalize = T.Compose([
-    T.Normalize(mean=[-0.5 / 0.5], std=[1 / 0.5]),
+    T.Normalize(
+        mean=[-0.485 / 0.229, -0.456 / 0.224, -0.406 / 0.225],
+        std=[1 / 0.229, 1 / 0.224, 1 / 0.225]
+    )
 ])
+
+# denormalize = T.Compose([
+#     T.Normalize(mean=[-0.5 / 0.5], std=[1 / 0.5]),
+# ])
 
 
 def get_tensor_grid(pil_image):
