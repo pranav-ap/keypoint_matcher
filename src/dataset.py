@@ -422,7 +422,7 @@ class MatchesDataModule(L.LightningDataModule):
 
                 patch_normalize=self.patch_normalize,
                 image_augmentation_no_kp=self.image_augmentation_no_kp,
-                # image_augmentation_kp=self.image_augmentation_kp,
+                image_augmentation_kp=self.image_augmentation_kp,
             )
 
             self.dataset['val'] = MatchesDataset(
