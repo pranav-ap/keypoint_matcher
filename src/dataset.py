@@ -229,7 +229,7 @@ class MatchesDataset(torch.utils.data.Dataset):
             center_point = x, y = keypoint
 
             if self.perturb_target:
-                if self.stage in ['train', 'val', 'test']:
+                if self.stage in ['val', 'test']:
                     random.seed(index)
 
                 perturb_size = (desired_patch_size - config.image.patch_border) // 2
@@ -372,7 +372,7 @@ class MatchesDataModule(L.LightningDataModule):
             self.references_group = None
             self.targets_group = None
 
-    def prepare_single_video_mode_data(self):
+    def _prepare_single_video_mode_data(self):
         patch_indices = OrderedDict()
 
         for a, b in zip(self.references_group.items(), self.targets_group.items()):
@@ -401,15 +401,11 @@ class MatchesDataModule(L.LightningDataModule):
         }
 
         return pair_names, patch_indices
-
-    def setup(self, stage=None):
+    
+    def _setup_single_video_mode(self, stage=None):
         self._open_file()
 
-        pair_names, patch_indices = None, None
-
-        if config.task.single_video_mode:
-            pair_names, patch_indices = self.prepare_single_video_mode_data()
-
+        pair_names, patch_indices = self._prepare_single_video_mode_data()
         assert pair_names is not None, "pair_names is None"
         assert patch_indices is not None, "patch_indices is None"
 
@@ -451,6 +447,16 @@ class MatchesDataModule(L.LightningDataModule):
             )
 
             logger.info(f"Test Dataset  : {len(self.dataset['test'])} samples")
+
+    def _setup_normal(self, stage=None):
+        exit(1)
+        pass
+
+    def setup(self, stage=None):
+        if config.task.single_video_mode:
+            self._setup_single_video_mode(stage=stage)
+        else:
+            self._setup_normal(stage=stage)
 
     def teardown(self, stage=None):
         self._close_file()

@@ -33,19 +33,11 @@ class MatcherModel(nn.Module):
         #     param.requires_grad = True
 
         self.mapper = nn.Sequential(
-            nn.Linear(576 * 2 + 2, 2048),
+            nn.Linear(576 * 2 + 2, 512),
             nn.ReLU(),
-            nn.Linear(2048, 1024),
+            nn.Linear(512, 128),
             nn.ReLU(),
-            nn.Linear(1024, 512),
-            nn.ReLU(),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 2),
+            nn.Linear(128, 2),
             nn.Sigmoid(),
         )
 

@@ -11,7 +11,7 @@ task:
 
 experiment:
     model: mobilenet  # resnet
-    name: ${experiment.model}  # ${experiment.model}_${experiment.loss}
+    name: ${experiment.model}_single_video_mode 
 
 paths:
     roots:
@@ -34,12 +34,12 @@ image:
     # [width, height]
     original_image_shape: [640, 480]  # [640, 480]
     patch_size: 32
-    patch_border: 4 # pixels 4
+    patch_border: 2 # pixels 2 4
 
 train:
     train_batch_size: 4
     val_batch_size: 4
-    num_patches_per_image: 20
+    num_patches_per_image: 160
 
     fast_dev_run: False  # True False
     overfit_batches: 0
