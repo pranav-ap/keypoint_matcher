@@ -8,24 +8,32 @@ from utils import logger
 torch.set_float32_matmul_precision('medium')
 
 
+def count_params(m):
+    total_trainable_params = sum(
+        p.numel() for p in m.parameters() if p.requires_grad
+    )
+
+    return total_trainable_params
+
+
 class MatcherModel(nn.Module):
     def __init__(self):
         super().__init__()
 
-        mobilenet = torchvision.models.mobilenet_v2(
-            weights=torchvision.models.MobileNet_V2_Weights.IMAGENET1K_V2,
+        self.feature_extractor = torchvision.models.mobilenet_v3_small(
+            weights=torchvision.models.MobileNet_V3_Small_Weights.IMAGENET1K_V1,
         )
 
-        self.feature_extractor = nn.Sequential(*list(mobilenet.children())[:-1])
+        self.feature_extractor = list(self.feature_extractor.children())[0]
 
-        for param in self.feature_extractor.parameters():
-            param.requires_grad = False 
+        # for param in self.feature_extractor.parameters():
+        #     param.requires_grad = False 
 
-        for param in self.feature_extractor[-10:].parameters():
-            param.requires_grad = True
+        # for param in self.feature_extractor[-6:].parameters():
+        #     param.requires_grad = True
 
         self.mapper = nn.Sequential(
-            nn.Linear(1280 * 2 + 2, 2048),
+            nn.Linear(576 * 2 + 2, 2048),
             nn.ReLU(),
             nn.Linear(2048, 1024),
             nn.ReLU(),
@@ -35,7 +43,9 @@ class MatcherModel(nn.Module):
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),
-            nn.Linear(128, 2),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 2),
             nn.Sigmoid(),
         )
 
@@ -56,8 +66,5 @@ class MatcherModel(nn.Module):
         target_coords = self.mapper(combined)
 
         target_coords = target_coords * 31.0
-
-        # target_coords = target_coords.round()
-        # target_coords = torch.clamp(target_coords, min=0, max=31)
 
         return target_coords

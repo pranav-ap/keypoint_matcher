@@ -233,8 +233,11 @@ class MatchesDataset(torch.utils.data.Dataset):
                     random.seed(index)
 
                 perturb_size = (desired_patch_size - config.image.patch_border) // 2
-                perturb_x = np.random.randint(-perturb_size, perturb_size)
-                perturb_y = np.random.randint(-perturb_size, perturb_size)
+                perturb_x = np.random.randint(4, perturb_size)
+                perturb_y = np.random.randint(4, perturb_size)
+
+                perturb_x = perturb_x * random.choice([1, -1])
+                perturb_y = perturb_y * random.choice([1, -1])
 
                 center_point = x + perturb_x, y + perturb_y
 
@@ -316,7 +319,7 @@ class MatchesDataModule(L.LightningDataModule):
         self.image_augmentation_no_kp = A.Compose(
             transforms=[
                 A.Defocus(p=0.3, radius=1),
-                # A.GaussNoise(p=0.3, var_limit=(20.0, 70.0)),
+                A.GaussNoise(p=0.3, var_limit=(20.0, 70.0)),
             ]
         )
 

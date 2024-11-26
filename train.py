@@ -14,6 +14,12 @@ def train():
 
     neptune_logger, tensorboard_logger = MyLogger.neptune_logger, MyLogger.tensorboard_logger
 
+    loggers = []
+    if neptune_logger is not None:
+        loggers.append(neptune_logger)
+    if tensorboard_logger is not None:
+        loggers.append(tensorboard_logger)
+
     light = Light(
         neptune_logger=neptune_logger,
         tensorboard_logger=tensorboard_logger
@@ -28,11 +34,11 @@ def train():
 
     dm = MatchesDataModule()
 
-    # neptune_logger.log_model_summary(model=light, max_depth=-1)
+    neptune_logger.log_model_summary(model=light, max_depth=-1)
 
     trainer = pl.Trainer(
         default_root_dir=config.paths.roots.output,
-        logger=[neptune_logger, tensorboard_logger],
+        logger=loggers,
         devices='auto',
         accelerator="auto",
         max_epochs=config.train.max_epochs,

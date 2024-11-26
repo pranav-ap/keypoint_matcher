@@ -52,7 +52,7 @@ class Light(pl.LightningModule):
         )
 
         return loss
-
+    
     def _shared_step(self, batch: Match):
         target_coords_pred = self.matcher_model(
             batch.reference_patches,
@@ -153,7 +153,7 @@ class Light(pl.LightningModule):
         elif stage == 'val':
             out_path = config.paths.output.val_images 
 
-        name = f'{stage}_global_step_{self.global_step}.png'
+        name = f'{stage}_current_epoch_{self.current_epoch}.png'
         out_path = os.path.join(out_path, name)
         image_grid.save(out_path)
 
@@ -164,12 +164,12 @@ class Light(pl.LightningModule):
                 name=name,
             )
 
-        # if self.tensorboard_logger is not None:
-        #     self.tensorboard_logger.experiment.add_images(
-        #         tag=f"{stage}_images",
-        #         img_tensor=get_tensor_grid(image_grid),
-        #         global_step=self.global_step
-        #     )
+        if self.tensorboard_logger is not None:
+            self.tensorboard_logger.experiment.add_images(
+                tag=f"{stage}_images",
+                img_tensor=get_tensor_grid(image_grid),
+                global_step=self.global_step
+            )
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
