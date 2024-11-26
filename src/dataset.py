@@ -455,34 +455,33 @@ class MatchesDataModule(L.LightningDataModule):
             logger.info(f"Test Dataset  : {len(self.dataset['test'])} samples")
 
     def _prepare_normal_mode_data(self):
-        for track in config.task.tracks:
-            config.task.track = track
+        patch_indices = OrderedDict()
+
+        for video in config.task.videos:
+            config.task.video = video
 
             for cam in config.task.cams:
                 config.task.cam = cam
 
-                references = self._file[f'{track}/{cam}/reference_coords']
-                targets = self._file[f'{track}/{cam}/target_coords']
+                references = self._file[f'{video}/{cam}/reference_coords']
+                targets = self._file[f'{video}/{cam}/target_coords']
 
+                for a, b in zip(references.items(), targets.items()):
+                    (pair_name, ref_dataset), (_, tar_dataset) = a, b
+                    if not isinstance(ref_dataset, h5py.Dataset) or not isinstance(tar_dataset, h5py.Dataset):
+                        continue
 
-        patch_indices = OrderedDict()
+                    reference_coords = ref_dataset[()]
+                    target_coords = tar_dataset[()]
 
-        for a, b in zip(self.references_group.items(), self.targets_group.items()):
-            (pair_name, ref_dataset), (_, tar_dataset) = a, b
-            if not isinstance(ref_dataset, h5py.Dataset) or not isinstance(tar_dataset, h5py.Dataset):
-                continue
+                    reference_coords_len = len(reference_coords)
+                    target_coords_len = len(target_coords)
+                    assert reference_coords_len == target_coords_len
 
-            reference_coords = ref_dataset[()]
-            target_coords = tar_dataset[()]
+                    N = min(reference_coords_len, config.train.num_patches_per_image)
 
-            reference_coords_len = len(reference_coords)
-            target_coords_len = len(target_coords)
-            assert reference_coords_len == target_coords_len
-
-            N = min(reference_coords_len, config.train.num_patches_per_image)
-
-            patch_indices_list = random.sample(range(reference_coords_len), N)
-            patch_indices[pair_name] = patch_indices_list
+                    patch_indices_list = random.sample(range(reference_coords_len), N)
+                    patch_indices[f'{video}_{pair_name}'] = patch_indices_list
 
         pair_names_list = list(self.references_group.keys())
         split_index = int(len(pair_names_list) * 0.8)
