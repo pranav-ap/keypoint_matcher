@@ -12,7 +12,6 @@ task:
 experiment:
     model: mobilenet  # resnet
     name: ${experiment.model}  # ${experiment.model}_${experiment.loss}
-    url: http://localhost:8080  # http://localhost:8080 file:///D:/thesis_code/keypoint_matcher/output
 
 paths:
     roots:
