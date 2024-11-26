@@ -360,10 +360,16 @@ class MatchesDataModule(L.LightningDataModule):
         self.targets_group = None
 
     def _open_file(self):
-        if self.file is None:
-            self.file = h5py.File(config.paths.matches, mode='r')
+        if self.file is not None:
+            return
+
+        self.file = h5py.File(config.paths.matches, mode='r')
+
+        if config.task.single_video_mode:
             self.references_group = self.file[f'{config.task.video}/{config.task.cam}/reference_coords']
             self.targets_group = self.file[f'{config.task.video}/{config.task.cam}/target_coords']
+        else:
+            pass
 
     def _close_file(self):
         if self.file is not None:
@@ -448,6 +454,46 @@ class MatchesDataModule(L.LightningDataModule):
 
             logger.info(f"Test Dataset  : {len(self.dataset['test'])} samples")
 
+    def _prepare_normal_mode_data(self):
+        for track in config.task.tracks:
+            config.task.track = track
+
+            for cam in config.task.cams:
+                config.task.cam = cam
+
+                references = self._file[f'{track}/{cam}/reference_coords']
+                targets = self._file[f'{track}/{cam}/target_coords']
+
+
+        patch_indices = OrderedDict()
+
+        for a, b in zip(self.references_group.items(), self.targets_group.items()):
+            (pair_name, ref_dataset), (_, tar_dataset) = a, b
+            if not isinstance(ref_dataset, h5py.Dataset) or not isinstance(tar_dataset, h5py.Dataset):
+                continue
+
+            reference_coords = ref_dataset[()]
+            target_coords = tar_dataset[()]
+
+            reference_coords_len = len(reference_coords)
+            target_coords_len = len(target_coords)
+            assert reference_coords_len == target_coords_len
+
+            N = min(reference_coords_len, config.train.num_patches_per_image)
+
+            patch_indices_list = random.sample(range(reference_coords_len), N)
+            patch_indices[pair_name] = patch_indices_list
+
+        pair_names_list = list(self.references_group.keys())
+        split_index = int(len(pair_names_list) * 0.8)
+
+        pair_names = {
+            'train': pair_names_list[:split_index],
+            'test': pair_names_list[split_index:]
+        }
+
+        return pair_names, patch_indices
+    
     def _setup_normal(self, stage=None):
         exit(1)
         pass

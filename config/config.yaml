@@ -2,9 +2,23 @@ log_level: TRACE  # TRACE WARNING
 
 task:
     dataset: monado_slam
+
     # MOO07_mapping_easy  MOO11_short_3_backandforth
     video: MOO11_short_3_backandforth
+    videos:
+        train:
+            - MOO09_short_1_updown 
+            - MOO07_mapping_easy
+        val:
+            - MOO11_short_3_backandforth
+            - MOO10_short_2_panorama
+        test:
+            - Nothing
+
     cam: cam0
+    cams:
+        - cam0
+        - cam1
 
     single_video_mode: True
     eda_mode: False  # True False
@@ -39,13 +53,13 @@ image:
 train:
     train_batch_size: 4
     val_batch_size: 4
-    num_patches_per_image: 160
+    num_patches_per_image: 200
 
     fast_dev_run: False  # True False
     overfit_batches: 0
 
     patience: 5
-    max_epochs: 100
+    max_epochs: 10
     check_val_every_n_epoch: 2
     num_sanity_val_steps: 1
     log_every_n_steps: 1
