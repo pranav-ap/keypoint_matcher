@@ -49,27 +49,53 @@ def match_collate_fn(batch):
 class MatchesDataset(torch.utils.data.Dataset):
     # noinspection PyTypeChecker
     def __init__(self,
-                 stage, pair_names, patch_indices,
+                 stage, 
                  perturb_target=False,
                  patch_normalize=None,
                  image_augmentation_no_kp=None,
                  image_augmentation_kp=None):
         self.stage = stage
         self.perturb_target = perturb_target
-        self.pair_names = pair_names
-        self.patch_indices = patch_indices
 
         self.image_augmentation_no_kp = image_augmentation_no_kp
         self.image_augmentation_kp = image_augmentation_kp
         self.patch_normalize = patch_normalize
 
+        self.names = []
+
     def _setup_file(self):
-        self.file = h5py.File(config.paths.matches, mode='r')
-        self.references_group = self.file[f'{config.task.video}/{config.task.cam}/reference_coords']
-        self.targets_group = self.file[f'{config.task.video}/{config.task.cam}/target_coords']
+        self._file = h5py.File(config.paths.matches, mode='r')
+        self.names = self._get_names()
+
+    def _get_names(self):
+        names = []
+
+        for video in config.task.videos[self.stage]:
+            config.task.video = video
+
+            for cam in config.task.cams:
+                config.task.cam = cam
+
+                references = self._file[f'{video}/{cam}/reference_coords']
+                targets = self._file[f'{video}/{cam}/target_coords']
+                indices = self._file[f'{video}/{cam}/indices']
+
+                for a, b in zip(references.items(), targets.items()):
+                    (pair_name, ref_dataset), (_, tar_dataset) = a, b
+                    if not isinstance(ref_dataset, h5py.Dataset) or not isinstance(tar_dataset, h5py.Dataset):
+                        continue
+
+                    names.append((video, cam, pair_name))
+
+        return names
 
     def __len__(self):
-        return len(self.pair_names)
+        if not hasattr(self, '_file'):
+            self._setup_file()
+
+        assert hasattr(self, '_file')
+
+        return len(self.names)
 
     @staticmethod
     def _get_image(image_name):
@@ -265,14 +291,24 @@ class MatchesDataset(torch.utils.data.Dataset):
         return target_patches, patch_level_target_coords
 
     def _prepare_images(self, idx):
-        pair_name = self.pair_names[idx]
-        patch_indices = self.patch_indices[pair_name]
-
-        reference_coords = self.references_group[pair_name][()][patch_indices].astype(np.int32)
-        target_coords = self.targets_group[pair_name][()][patch_indices].astype(np.int32)
-        assert reference_coords.shape == target_coords.shape
-
+        name = self.names[idx]
+        video, cam, pair_name = name
         reference_image_name, target_image_name = pair_name.split('_')
+
+        config.task.video = video
+        config.task.cam = cam
+
+        references_group = self._file[f'{config.task.video}/{config.task.cam}/reference_coords']
+        targets_group = self._file[f'{config.task.video}/{config.task.cam}/target_coords']
+        
+        indices_group = self._file[f'{config.task.video}/{config.task.cam}/indices']
+        indices = indices_group[pair_name][()].astype(np.int32)
+        N = min(len(indices), config.train.num_patches_per_image)
+        indices = indices[:N]
+
+        reference_coords = references_group[pair_name][()][indices].astype(np.int32)
+        target_coords = targets_group[pair_name][()][indices].astype(np.int32)
+        assert reference_coords.shape == target_coords.shape
 
         reference_coords = [(x, y) for x, y in reference_coords]
         references = self._prepare_references(
@@ -289,10 +325,10 @@ class MatchesDataset(torch.utils.data.Dataset):
         return references, targets
 
     def __getitem__(self, idx):
-        if not hasattr(self, 'file'):
+        if not hasattr(self, '_file'):
             self._setup_file()
 
-        assert hasattr(self, 'file')
+        assert hasattr(self, '_file')
 
         references, targets = self._prepare_images(idx)
         reference_patches, patch_level_reference_coords = references
@@ -323,8 +359,8 @@ class MatchesDataModule(L.LightningDataModule):
             ]
         )
 
-        pad_mode = cv2.BORDER_CONSTANT  # cv2.BORDER_REPLICATE cv2.BORDER_CONSTANT
-        pad_val = 0  # (0, 255, 0) if config.task.eda_mode else 0
+        pad_mode = cv2.BORDER_CONSTANT 
+        pad_val = 0 
         p = 1 if config.task.eda_mode else 0.7
 
         self.image_augmentation_kp = A.Compose(
@@ -350,81 +386,27 @@ class MatchesDataModule(L.LightningDataModule):
                 mean=[0.485, 0.456, 0.406],
                 std=[0.229, 0.224, 0.225]
             ),
-            # T.Normalize(mean=[0.5], std=[0.5]),
         ])
 
         self.dataset: Dict[str, MatchesDataset] = {}
-
-        self.file = None
-        self.references_group = None
-        self.targets_group = None
+        self._file = None
 
     def _open_file(self):
-        if self.file is not None:
+        if self._file is not None:
             return
 
-        self.file = h5py.File(config.paths.matches, mode='r')
-
-        if config.task.single_video_mode:
-            self.references_group = self.file[f'{config.task.video}/{config.task.cam}/reference_coords']
-            self.targets_group = self.file[f'{config.task.video}/{config.task.cam}/target_coords']
-        else:
-            pass
+        self._file = h5py.File(config.paths.matches, mode='r')
 
     def _close_file(self):
-        if self.file is not None:
-            self.file.close()
-            self.file = None
-            self.references_group = None
-            self.targets_group = None
-
-    def _prepare_single_video_mode_data(self):
-        patch_indices = OrderedDict()
-
-        for a, b in zip(self.references_group.items(), self.targets_group.items()):
-            (pair_name, ref_dataset), (_, tar_dataset) = a, b
-            if not isinstance(ref_dataset, h5py.Dataset) or not isinstance(tar_dataset, h5py.Dataset):
-                continue
-
-            reference_coords = ref_dataset[()]
-            target_coords = tar_dataset[()]
-
-            reference_coords_len = len(reference_coords)
-            target_coords_len = len(target_coords)
-            assert reference_coords_len == target_coords_len
-
-            N = min(reference_coords_len, config.train.num_patches_per_image)
-
-            patch_indices_list = random.sample(range(reference_coords_len), N)
-            patch_indices[pair_name] = patch_indices_list
-
-        pair_names_list = list(self.references_group.keys())
-        split_index = int(len(pair_names_list) * 0.8)
-
-        pair_names = {
-            'train': pair_names_list[:split_index],
-            'test': pair_names_list[split_index:]
-        }
-
-        return pair_names, patch_indices
+        if self._file is not None:
+            self._file.close()
+            self._file = None
     
-    def _setup_single_video_mode(self, stage=None):
-        self._open_file()
-
-        pair_names, patch_indices = self._prepare_single_video_mode_data()
-        assert pair_names is not None, "pair_names is None"
-        assert patch_indices is not None, "patch_indices is None"
-
+    def setup(self, stage=None):
         if stage == "fit":
-            split_index = int(len(pair_names['train']) * 0.8)
-            train_pair_names = pair_names['train'][:split_index]
-            val_pair_names = pair_names['train'][split_index:]
-
             self.dataset['train'] = MatchesDataset(
                 stage="train",
-                pair_names=train_pair_names,
-                patch_indices=patch_indices,
-                perturb_target=True,  # True False
+                perturb_target=True,
 
                 patch_normalize=self.patch_normalize,
                 image_augmentation_no_kp=self.image_augmentation_no_kp,
@@ -433,10 +415,7 @@ class MatchesDataModule(L.LightningDataModule):
 
             self.dataset['val'] = MatchesDataset(
                 stage="val",
-                pair_names=val_pair_names,
-                patch_indices=patch_indices,
                 perturb_target=True,
-
                 patch_normalize=self.patch_normalize,
             )
 
@@ -446,62 +425,10 @@ class MatchesDataModule(L.LightningDataModule):
         if stage == "test":
             self.dataset['test'] = MatchesDataset(
                 stage="test",
-                pair_names=pair_names['test'],
-                patch_indices=patch_indices,
-
                 patch_normalize=self.patch_normalize,
             )
 
             logger.info(f"Test Dataset  : {len(self.dataset['test'])} samples")
-
-    def _prepare_normal_mode_data(self):
-        patch_indices = OrderedDict()
-
-        for video in config.task.videos:
-            config.task.video = video
-
-            for cam in config.task.cams:
-                config.task.cam = cam
-
-                references = self._file[f'{video}/{cam}/reference_coords']
-                targets = self._file[f'{video}/{cam}/target_coords']
-
-                for a, b in zip(references.items(), targets.items()):
-                    (pair_name, ref_dataset), (_, tar_dataset) = a, b
-                    if not isinstance(ref_dataset, h5py.Dataset) or not isinstance(tar_dataset, h5py.Dataset):
-                        continue
-
-                    reference_coords = ref_dataset[()]
-                    target_coords = tar_dataset[()]
-
-                    reference_coords_len = len(reference_coords)
-                    target_coords_len = len(target_coords)
-                    assert reference_coords_len == target_coords_len
-
-                    N = min(reference_coords_len, config.train.num_patches_per_image)
-
-                    patch_indices_list = random.sample(range(reference_coords_len), N)
-                    patch_indices[f'{video}_{pair_name}'] = patch_indices_list
-
-        pair_names_list = list(self.references_group.keys())
-        split_index = int(len(pair_names_list) * 0.8)
-
-        pair_names = {
-            'train': pair_names_list[:split_index],
-            'test': pair_names_list[split_index:]
-        }
-
-        return pair_names, patch_indices
-    
-    def _setup_normal(self, stage=None):
-        exit(1)
-        pass
-
-    def setup(self, stage=None):
-        if config.task.single_video_mode:
-            self._setup_single_video_mode(stage=stage)
-        else:
-            self._setup_normal(stage=stage)
 
     def teardown(self, stage=None):
         self._close_file()

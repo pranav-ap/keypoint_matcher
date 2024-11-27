@@ -34,7 +34,8 @@ def train():
 
     dm = MatchesDataModule()
 
-    neptune_logger.log_model_summary(model=light, max_depth=-1)
+    if neptune_logger is not None:
+        neptune_logger.log_model_summary(model=light, max_depth=-1)
 
     trainer = pl.Trainer(
         default_root_dir=config.paths.roots.output,
