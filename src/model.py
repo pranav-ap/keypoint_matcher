@@ -27,7 +27,7 @@ class MatcherModel(nn.Module):
 
             nn.Conv2d(in_channels=24, out_channels=36, kernel_size=5, stride=2),
             nn.BatchNorm2d(36),
-            nn.Sigmoid()
+            nn.ReLU()
         )
 
         self.mapper = nn.Sequential(

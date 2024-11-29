@@ -27,7 +27,7 @@ experiment:
 
 paths:
     roots:
-        ws: D:/thesis_code # /home/stud/ath/ath_ws  D:/thesis_code
+        ws: /home/stud/ath/ath_ws # /home/stud/ath/ath_ws  D:/thesis_code
         mav: ${paths.roots.ws}/datasets/${task.dataset}/${task.video}/mav0
         project: ${paths.roots.ws}/keypoint_matcher
         output: ${paths.roots.project}/output
@@ -53,7 +53,7 @@ train:
     val_batch_size: 16  #  4
     num_patches_per_image: 128
 
-    fast_dev_run: False  # True False
+    fast_dev_run: True  # True False
     overfit_batches: 0
 
     patience: 5
@@ -72,5 +72,5 @@ test:
 
 loggers:
     # - tensorboard
-    - neptune
+    # - neptune
 
