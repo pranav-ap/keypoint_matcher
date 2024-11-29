@@ -27,7 +27,7 @@ experiment:
 
 paths:
     roots:
-        ws: /home/stud/ath/ath_ws # /home/stud/ath/ath_ws  D:/thesis_code
+        ws: D:/thesis_code # /home/stud/ath/ath_ws  D:/thesis_code
         mav: ${paths.roots.ws}/datasets/${task.dataset}/${task.video}/mav0
         project: ${paths.roots.ws}/keypoint_matcher
         output: ${paths.roots.project}/output

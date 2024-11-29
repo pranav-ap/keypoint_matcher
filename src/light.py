@@ -160,16 +160,16 @@ class Light(pl.LightningModule):
             n_columns=3,
         )
 
-        out_path = config.paths.output.test_images
-
-        if stage == 'train':
-            out_path = config.paths.output.train_images
-        elif stage == 'val':
-            out_path = config.paths.output.val_images 
+        # out_path = config.paths.output.test_images
+        #
+        # if stage == 'train':
+        #     out_path = config.paths.output.train_images
+        # elif stage == 'val':
+        #     out_path = config.paths.output.val_images
 
         name = f'{stage}_epoch_{self.current_epoch}.png'
-        out_path = os.path.join(out_path, name)
-        image_grid.save(out_path)
+        # out_path = os.path.join(out_path, name)
+        # image_grid.save(out_path)
 
         if self.neptune_logger is not None:
             self.neptune_logger.experiment[f"{stage}/images"].append(
@@ -222,7 +222,7 @@ class Light(pl.LightningModule):
             save_last=True,
         )
 
-        progress_bar_callback = TQDMProgressBar(refresh_rate=5)
+        progress_bar_callback = TQDMProgressBar(refresh_rate=2)
         lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
 
         return [
