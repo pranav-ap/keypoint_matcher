@@ -40,8 +40,6 @@ class MatcherModel(nn.Module):
         combined = torch.cat([reference_patches, target_patches], dim=1)
         x = self.feature_extractor(combined)
 
-        x = x.view(x.size(0), -1)
-
         reference_coords = reference_coords / 31.0
         reference_coords = reference_coords.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 5, 5)
 
