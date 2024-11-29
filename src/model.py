@@ -32,13 +32,19 @@ class MatcherModel(nn.Module):
         # for param in self.feature_extractor[-6:].parameters():
         #     param.requires_grad = True
 
+        # self.mapper = nn.Sequential(
+        #     nn.Linear(576 * 2 + 2, 2),
+        #     nn.Sigmoid(),
+        #     # nn.BatchNorm1d(2)
+        # )
+
         self.mapper = nn.Sequential(
-            nn.Linear(576 * 2 + 2, 512),
-            nn.ReLU(),
-            nn.Linear(512, 128),
-            nn.ReLU(),
-            nn.Linear(128, 2),
-            nn.Sigmoid(),
+            nn.Conv2d(576, 128, kernel_size=3, stride=1, padding=1),  
+            nn.ReLU(),  # Activation function
+            nn.Flatten(),  # Flatten the tensor to feed into the Linear layer
+            # nn.Linear(128 * feature_map_width * feature_map_height + 2, 2),
+            # nn.Sigmoid(),
+            # nn.BatchNorm1d(2)
         )
 
     def forward(self, reference_patches, target_patches, reference_coords):
@@ -57,6 +63,6 @@ class MatcherModel(nn.Module):
 
         target_coords = self.mapper(combined)
 
-        target_coords = target_coords * 31.0
+        # logger.debug(f'target_coords {target_coords[0]}')
 
         return target_coords

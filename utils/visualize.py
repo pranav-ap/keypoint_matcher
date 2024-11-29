@@ -23,7 +23,7 @@ def get_tensor_grid(pil_image):
     return to_tensor(pil_image).unsqueeze(0)
 
 
-def show_batch(reference_patches, target_patches, patch_level_reference_coords, patch_level_target_coords, limit_count=None, border_size=2, border_color="white", n_columns=2):
+def show_batch(reference_patches, target_patches, patch_level_reference_coords, patch_level_target_coords, patch_level_target_coords_true, limit_count=None, border_size=2, border_color="white", n_columns=2):
     assert limit_count is None or limit_count > 0
 
     num_patches = reference_patches.size(0)
@@ -54,6 +54,20 @@ def show_batch(reference_patches, target_patches, patch_level_reference_coords, 
         patch = ImageOps.expand(patch, border=border_size, fill=border_color)
         return patch
 
+    def prepare_target_patch(patch, x, y, a, b):
+        patch = denormalize(patch)
+        patch = to_pil(patch)
+
+        if patch.mode != "RGB":
+            patch = patch.convert("RGB")
+
+        draw_im = ImageDraw.Draw(patch)
+        draw_im.ellipse((x - radius, y - radius, x + radius, y + radius), outline='yellow')
+        draw_im.rectangle((a - radius, b - radius, a + radius, b + radius), outline='green')
+        patch = patch.resize((patch_size, patch_size))
+        patch = ImageOps.expand(patch, border=border_size, fill=border_color)
+        return patch
+
     for i in range(num_patches):
         reference_patch = reference_patches[i]
         x, y = patch_level_reference_coords[i]
@@ -61,7 +75,8 @@ def show_batch(reference_patches, target_patches, patch_level_reference_coords, 
 
         target_patch = target_patches[i]
         x, y = patch_level_target_coords[i]
-        target_patch = prepare_patch(target_patch, x, y, color='green')
+        a, b = patch_level_target_coords_true[i]
+        target_patch = prepare_target_patch(target_patch, x, y, a, b)
 
         row = i // n_columns
         col = i % n_columns

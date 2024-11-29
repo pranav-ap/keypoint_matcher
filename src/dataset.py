@@ -255,15 +255,15 @@ class MatchesDataset(torch.utils.data.Dataset):
             center_point = x, y = keypoint
 
             if self.perturb_target:
-                if self.stage in ['val', 'test']:
-                    random.seed(index)
+                if self.stage in ['train', 'val', 'test']:
+                    np.random.seed(index)
 
                 perturb_size = (desired_patch_size - config.image.patch_border) // 2
-                perturb_x = np.random.randint(4, perturb_size)
-                perturb_y = np.random.randint(4, perturb_size)
+                perturb_x = np.random.randint(2, perturb_size)
+                perturb_y = np.random.randint(2, perturb_size)
 
-                perturb_x = perturb_x * random.choice([1, -1])
-                perturb_y = perturb_y * random.choice([1, -1])
+                perturb_x = perturb_x * np.random.choice([1, -1])
+                perturb_y = perturb_y * np.random.choice([1, -1])
 
                 center_point = x + perturb_x, y + perturb_y
 
@@ -304,6 +304,7 @@ class MatchesDataset(torch.utils.data.Dataset):
         indices_group = self._file[f'{config.task.video}/{config.task.cam}/indices']
         indices = indices_group[pair_name][()].astype(np.int32)
         N = min(len(indices), config.train.num_patches_per_image)
+        # logger.debug(f'N : {N, len(indices), config.train.num_patches_per_image}')
         indices = indices[:N]
 
         reference_coords = references_group[pair_name][()][indices].astype(np.int32)
@@ -410,7 +411,7 @@ class MatchesDataModule(L.LightningDataModule):
 
                 patch_normalize=self.patch_normalize,
                 image_augmentation_no_kp=self.image_augmentation_no_kp,
-                image_augmentation_kp=self.image_augmentation_kp,
+                # image_augmentation_kp=self.image_augmentation_kp,
             )
 
             self.dataset['val'] = MatchesDataset(

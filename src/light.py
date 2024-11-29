@@ -47,7 +47,7 @@ class Light(pl.LightningModule):
     @staticmethod
     def _compute_loss(target_coords, target_coords_pred):
         loss = F.mse_loss(
-            target_coords_pred / 31.0,
+            target_coords_pred,
             target_coords.float() / 31.0,
         )
 
@@ -79,9 +79,16 @@ class Light(pl.LightningModule):
             target_coords_pred
         )
 
+        x, y = target_coords_pred[0]
+
         metrics = {
             "train/loss": loss,
+            "train/first_coords/x": x,
+            "train/first_coords/y": y,
         }
+
+        # target_coords_pred = torch.clamp(target_coords_pred, min=0, max=1)
+        target_coords_pred = target_coords_pred * 31.0
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
 
@@ -99,6 +106,9 @@ class Light(pl.LightningModule):
     @torch.no_grad()
     def validation_step(self, batch: Match, batch_idx):
         loss, target_coords_pred = self._shared_step(batch)
+
+        # target_coords_pred = torch.clamp(target_coords_pred, min=0, max=1)
+        target_coords_pred = target_coords_pred * 31.0
 
         metrics = {
             "val/loss": loss,
@@ -121,6 +131,9 @@ class Light(pl.LightningModule):
     def test_step(self, batch: Match, batch_idx):
         loss, target_coords_pred = self._shared_step(batch)
 
+        # target_coords_pred = torch.clamp(target_coords_pred, min=0, max=1)
+        target_coords_pred = target_coords_pred * 31.0
+
         metrics = {
             "test/loss": loss,
         }
@@ -142,6 +155,7 @@ class Light(pl.LightningModule):
         image_grid = show_batch(
             batch.reference_patches, batch.target_patches,
             batch.patch_level_reference_coords, target_coords,
+            batch.patch_level_target_coords,
             limit_count=limit_count,
             n_columns=3,
         )
@@ -153,7 +167,7 @@ class Light(pl.LightningModule):
         elif stage == 'val':
             out_path = config.paths.output.val_images 
 
-        name = f'{stage}_current_epoch_{self.current_epoch}.png'
+        name = f'{stage}_epoch_{self.current_epoch}.png'
         out_path = os.path.join(out_path, name)
         image_grid.save(out_path)
 
