@@ -19,7 +19,7 @@ task:
         - cam0
         - cam1
 
-    eda_mode: False  # True False
+    eda_mode: True  # True False
 
 experiment:
     model: smallnet  # resnet mobilenet
@@ -27,7 +27,7 @@ experiment:
 
 paths:
     roots:
-        ws: /home/stud/ath/ath_ws # /home/stud/ath/ath_ws  D:/thesis_code
+        ws: D:/thesis_code # /home/stud/ath/ath_ws  D:/thesis_code
         mav: ${paths.roots.ws}/datasets/${task.dataset}/${task.video}/mav0
         project: ${paths.roots.ws}/keypoint_matcher
         output: ${paths.roots.project}/output
@@ -49,8 +49,8 @@ image:
     patch_border: 2 # pixels 2 4
 
 train:
-    train_batch_size: 64  #  4
-    val_batch_size: 64  #  4
+    train_batch_size: 4  #  4
+    val_batch_size: 4  #  4
     num_patches_per_image: 128
 
     fast_dev_run: False  # True False
@@ -71,6 +71,6 @@ test:
     batch_size: 4
 
 loggers:
-    # - tensorboard
-    - neptune
+     - tensorboard
+#    - neptune
 

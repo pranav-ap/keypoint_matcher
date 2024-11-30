@@ -25,31 +25,42 @@ class MatcherModel(nn.Module):
             nn.BatchNorm2d(24),
             nn.ReLU(),
 
-            nn.Conv2d(in_channels=24, out_channels=36, kernel_size=5, stride=2),
+            nn.Conv2d(in_channels=24, out_channels=36, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(36),
             nn.ReLU(),
 
-            nn.Conv2d(in_channels=36, out_channels=48, kernel_size=5, stride=2),
+            nn.Conv2d(in_channels=36, out_channels=48, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(48),
+            nn.ReLU(),
+
+            nn.Conv2d(in_channels=48, out_channels=64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
         )
 
-        in_features = 2450
-
         self.mapper = nn.Sequential(
-            nn.Flatten(start_dim=1),
-            nn.Linear(in_features=in_features, out_features=2),
+            nn.Conv2d(in_channels=64 + 64 + 2, out_channels=64, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+
+            nn.Conv2d(in_channels=64, out_channels=32, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.Conv2d(in_channels=32, out_channels=2, kernel_size=1),
             nn.Tanh(),
         )
 
     def forward(self, reference_patches, target_patches, reference_coords):
-        reference_patches = self.feature_extractor(reference_patches)
-        target_patches = self.feature_extractor(target_patches)
+        reference_features = self.feature_extractor(reference_patches)
+        target_features = self.feature_extractor(target_patches)
 
+        # Normalize to [0, 1]
         reference_coords = reference_coords / 31.0
-        reference_coords = reference_coords.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 5, 5)
+        reference_coords = reference_coords.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, reference_features.size(2), reference_features.size(3))
 
-        combined = torch.cat([reference_patches, target_patches, reference_coords], dim=1)
+        combined = torch.cat([reference_features, target_features, reference_coords], dim=1)
+
         target_coords = self.mapper(combined)
+        target_coords = target_coords.squeeze(-1).squeeze(-1)
 
         return target_coords
