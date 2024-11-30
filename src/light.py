@@ -46,11 +46,15 @@ class Light(pl.LightningModule):
 
     @staticmethod
     def _compute_loss(target_coords, target_coords_pred):
-        loss = F.mse_loss(
-            target_coords_pred,
-            target_coords.float() / 31.0,
-        )
+        # loss = F.mse_loss(
+        #     target_coords_pred,
+        #     target_coords.float() / 31.0,
+        # )
 
+        # Scale targets to [-1, 1]
+        target_coords_scaled = target_coords.float() / 15.5 - 1  
+        loss = F.mse_loss(target_coords_pred, target_coords_scaled)
+        
         return loss
     
     def _shared_step(self, batch: Match):
@@ -88,7 +92,8 @@ class Light(pl.LightningModule):
         }
 
         # target_coords_pred = torch.clamp(target_coords_pred, min=0, max=1)
-        target_coords_pred = target_coords_pred * 31.0
+        target_coords_pred = (target_coords_pred + 1) * 15.5
+        # target_coords_pred = target_coords_pred * 31.0
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
 
@@ -108,7 +113,8 @@ class Light(pl.LightningModule):
         loss, target_coords_pred = self._shared_step(batch)
 
         # target_coords_pred = torch.clamp(target_coords_pred, min=0, max=1)
-        target_coords_pred = target_coords_pred * 31.0
+        target_coords_pred = (target_coords_pred + 1) * 15.5
+        # target_coords_pred = target_coords_pred * 31.0
 
         metrics = {
             "val/loss": loss,
@@ -132,7 +138,8 @@ class Light(pl.LightningModule):
         loss, target_coords_pred = self._shared_step(batch)
 
         # target_coords_pred = torch.clamp(target_coords_pred, min=0, max=1)
-        target_coords_pred = target_coords_pred * 31.0
+        target_coords_pred = (target_coords_pred + 1) * 15.5
+        # target_coords_pred = target_coords_pred * 31.0
 
         metrics = {
             "test/loss": loss,
