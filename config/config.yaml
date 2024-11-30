@@ -9,6 +9,7 @@ task:
             - MOO09_short_1_updown 
             - MOO07_mapping_easy
             - MOO10_short_2_panorama
+            - MGO07_mapping_easy
         val:
             - MOO11_short_3_backandforth
         test:
@@ -27,7 +28,7 @@ experiment:
 
 paths:
     roots:
-        ws: D:/thesis_code # /home/stud/ath/ath_ws  D:/thesis_code
+        ws: /home/stud/ath/ath_ws # /home/stud/ath/ath_ws  D:/thesis_code
         mav: ${paths.roots.ws}/datasets/${task.dataset}/${task.video}/mav0
         project: ${paths.roots.ws}/keypoint_matcher
         output: ${paths.roots.project}/output
@@ -51,7 +52,7 @@ image:
 train:
     train_batch_size: 4  #  4
     val_batch_size: 4  #  4
-    num_patches_per_image: 128
+    num_patches_per_image: 100
 
     fast_dev_run: False  # True False
     overfit_batches: 0
@@ -65,12 +66,12 @@ train:
     learning_rate: 1e-4
 
 val:
-    num_patch_pairs_to_save: 24
+    num_patch_pairs_to_save: 60
 
 test:
     batch_size: 4
 
 loggers:
-     - tensorboard
-#    - neptune
+    #  - tensorboard
+   - neptune
 

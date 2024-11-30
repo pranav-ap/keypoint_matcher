@@ -255,7 +255,7 @@ class MatchesDataset(torch.utils.data.Dataset):
             center_point = x, y = keypoint
 
             if self.perturb_target:
-                if self.stage in ['train', 'val', 'test']:
+                if self.stage in ['val', 'test']:
                     np.random.seed(index)
 
                 perturb_size = (desired_patch_size - config.image.patch_border) // 2
