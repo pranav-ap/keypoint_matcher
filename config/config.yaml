@@ -6,11 +6,12 @@ task:
     video: MOO11_short_3_backandforth
     videos:
         train:
-            - MOO09_short_1_updown 
             - MOO07_mapping_easy
-            - MOO10_short_2_panorama
+            - MOO09_short_1_updown 
             - MGO07_mapping_easy
+            - MGO08_mapping_hard 
         val:
+            - MOO10_short_2_panorama
             - MOO11_short_3_backandforth
         test:
             - Nothing
@@ -20,7 +21,7 @@ task:
         - cam0
         - cam1
 
-    eda_mode: True  # True False
+    eda_mode: False  # True False
 
 experiment:
     model: smallnet  # resnet mobilenet
@@ -40,7 +41,7 @@ paths:
         val_images: ${paths.roots.output}/${experiment.name}/images/val
         test_images: ${paths.roots.output}/${experiment.name}/images/test
 
-    matches: ${paths.roots.ws}/keypoint_matcher/train_data.hdf5
+    matches: ${paths.roots.ws}/keypoint_dataset_pipeline/output/train_6/train_data.hdf5
     images: ${paths.roots.mav}/${task.cam}/data
 
 image:
@@ -52,14 +53,14 @@ image:
 train:
     train_batch_size: 4  #  4
     val_batch_size: 4  #  4
-    num_patches_per_image: 100
+    num_patches_per_image: 120
 
     fast_dev_run: False  # True False
     overfit_batches: 0
 
-    patience: 5
+    patience: 3
     max_epochs: 200
-    check_val_every_n_epoch: 5
+    check_val_every_n_epoch: 3
     num_sanity_val_steps: 1
     log_every_n_steps: 1
     accumulate_grad_batches: 1

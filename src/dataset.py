@@ -355,14 +355,14 @@ class MatchesDataModule(L.LightningDataModule):
 
         self.image_augmentation_no_kp = A.Compose(
             transforms=[
-                A.Defocus(p=0.3, radius=1),
-                A.GaussNoise(p=0.3, var_limit=(20.0, 70.0)),
+                A.Defocus(p=0.5, radius=1),
+                A.GaussNoise(p=0.5, var_limit=(20.0, 70.0)),
             ]
         )
 
         pad_mode = cv2.BORDER_CONSTANT 
         pad_val = 0 
-        p = 1 if config.task.eda_mode else 0.7
+        p = 1 if config.task.eda_mode else 0.5
 
         self.image_augmentation_kp = A.Compose(
             transforms=[
@@ -375,7 +375,7 @@ class MatchesDataModule(L.LightningDataModule):
                 # ),
                 A.SafeRotate(
                     p=p,
-                    limit=(-25, 25)
+                    limit=(-10, 10)
                 ),
             ],
             keypoint_params=A.KeypointParams(format='xy')
