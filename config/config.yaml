@@ -3,13 +3,13 @@ log_level: TRACE  # TRACE WARNING
 task:
     dataset: monado_slam
 
-    video: MOO11_short_3_backandforth
+    video: MOO07_mapping_easy
     videos:
         train:
             - MOO07_mapping_easy
-            - MOO09_short_1_updown 
-            - MGO07_mapping_easy
-            - MGO08_mapping_hard 
+#            - MOO09_short_1_updown
+#            - MGO07_mapping_easy
+#            - MGO08_mapping_hard
         val:
             - MOO10_short_2_panorama
             - MOO11_short_3_backandforth
@@ -21,7 +21,7 @@ task:
         - cam0
         - cam1
 
-    eda_mode: False  # True False
+    eda_mode: True  # True False
 
 experiment:
     model: smallnet  # resnet mobilenet
@@ -29,7 +29,7 @@ experiment:
 
 paths:
     roots:
-        ws: /home/stud/ath/ath_ws # /home/stud/ath/ath_ws  D:/thesis_code
+        ws: D:/thesis_code # /home/stud/ath/ath_ws  D:/thesis_code
         mav: ${paths.roots.ws}/datasets/${task.dataset}/${task.video}/mav0
         project: ${paths.roots.ws}/keypoint_matcher
         output: ${paths.roots.project}/output
@@ -41,7 +41,7 @@ paths:
         val_images: ${paths.roots.output}/${experiment.name}/images/val
         test_images: ${paths.roots.output}/${experiment.name}/images/test
 
-    matches: ${paths.roots.ws}/keypoint_dataset_pipeline/output/train_6/train_data.hdf5
+    matches: ${paths.roots.project}/train_data.hdf5
     images: ${paths.roots.mav}/${task.cam}/data
 
 image:

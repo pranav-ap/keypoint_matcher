@@ -21,27 +21,31 @@ class MatcherModel(nn.Module):
         super().__init__()
 
         self.model = nn.Sequential(
-            nn.Conv2d(3 * 2 + 2, 64, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(3 * 2 + 2, 32, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(),
 
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(),
 
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+
+            nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(256),
             nn.ReLU(),
 
-            nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(512),
-            nn.ReLU(),
+            nn.AdaptiveMaxPool2d((1, 1)),
 
-            # nn.AdaptiveAvgPool2d((1, 1)),
-
-            # nn.Flatten(), 
-            # nn.Linear(512, 2), 
-            # nn.Tanh(),  
+            nn.Flatten(),
+            nn.Linear(256, 2),
+            nn.Tanh(),
         )
 
     def forward(self, reference_patches, target_patches, reference_coords):
