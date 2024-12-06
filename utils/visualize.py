@@ -1,3 +1,5 @@
+import math
+
 import matplotlib.pyplot as plt
 import torchvision.transforms as T
 from PIL import Image, ImageOps, ImageDraw
@@ -64,6 +66,7 @@ def show_batch(reference_patches, target_patches, patch_level_reference_coords, 
         draw_im = ImageDraw.Draw(patch)
         draw_im.ellipse((x - radius, y - radius, x + radius, y + radius), outline='yellow')
         draw_im.rectangle((a - radius - 1, b - radius - 1, a + radius + 1, b + radius + 1), outline='green')
+
         patch = patch.resize((patch_size, patch_size))
         patch = ImageOps.expand(patch, border=border_size, fill=border_color)
         return patch

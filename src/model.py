@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torchvision
 
 from config import config
 from utils import logger
@@ -8,24 +7,14 @@ from utils import logger
 torch.set_float32_matmul_precision('medium')
 
 
-def count_params(m):
-    total_trainable_params = sum(
-        p.numel() for p in m.parameters() if p.requires_grad
-    )
-
-    return total_trainable_params
-
-
 class MatcherModel(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.model = nn.Sequential(
-            nn.Conv2d(3 * 2 + 2, 32, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
+        in_channels = 3 * 2 + 2
 
-            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
+        self.model = nn.Sequential(
+            nn.Conv2d(in_channels, 64, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(),
 
@@ -33,18 +22,28 @@ class MatcherModel(nn.Module):
             nn.BatchNorm2d(128),
             nn.ReLU(),
 
-            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-
             nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(256),
             nn.ReLU(),
 
+            # b, c, h, w
             nn.AdaptiveMaxPool2d((1, 1)),
+            # b, c, 1, 1
 
             nn.Flatten(),
-            nn.Linear(256, 2),
+            # b, c
+
+            nn.Linear(256, 128),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.Dropout(),
+
+            nn.Linear(128, 64),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+            nn.Dropout(),
+
+            nn.Linear(64, 2),
             nn.Tanh(),
         )
 

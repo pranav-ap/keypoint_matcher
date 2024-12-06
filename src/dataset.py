@@ -1,6 +1,4 @@
 import os
-import random
-from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Dict, Optional
 
@@ -12,8 +10,6 @@ import numpy as np
 import torch
 from PIL import Image
 from torchvision import transforms as T
-
-import math
 
 from config import config
 from utils import logger
@@ -79,6 +75,8 @@ class MatchesDataset(torch.utils.data.Dataset):
                 references = self._file[f'{video}/{cam}/reference_coords']
                 targets = self._file[f'{video}/{cam}/target_coords']
                 indices = self._file[f'{video}/{cam}/indices']
+
+                logger.info(f'Image Pair Counts : {video} {cam} : {len(references.items())}')
 
                 for a, b in zip(references.items(), targets.items()):
                     (pair_name, ref_dataset), (_, tar_dataset) = a, b
@@ -255,7 +253,7 @@ class MatchesDataset(torch.utils.data.Dataset):
             center_point = x, y = keypoint
 
             if self.perturb_target:
-                if self.stage in ['val', 'test']:
+                if self.stage in ['train', 'val', 'test']:
                     np.random.seed(index)
 
                 perturb_size = (desired_patch_size - config.image.patch_border) // 2
@@ -300,11 +298,11 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         references_group = self._file[f'{config.task.video}/{config.task.cam}/reference_coords']
         targets_group = self._file[f'{config.task.video}/{config.task.cam}/target_coords']
-        
+
         indices_group = self._file[f'{config.task.video}/{config.task.cam}/indices']
         indices = indices_group[pair_name][()].astype(np.int32)
         N = min(len(indices), config.train.num_patches_per_image)
-        # logger.debug(f'N : {N, len(indices), config.train.num_patches_per_image}')
+        assert N != 0
         indices = indices[:N]
 
         reference_coords = references_group[pair_name][()][indices].astype(np.int32)
@@ -356,7 +354,7 @@ class MatchesDataModule(L.LightningDataModule):
         self.image_augmentation_no_kp = A.Compose(
             transforms=[
                 A.Defocus(p=0.5, radius=1),
-                A.GaussNoise(p=0.5, var_limit=(20.0, 70.0)),
+                A.GaussNoise(p=0.5, var_limit=(10.0, 30.0)),
             ]
         )
 
@@ -438,7 +436,7 @@ class MatchesDataModule(L.LightningDataModule):
         return torch.utils.data.DataLoader(
             self.dataset['train'],
             batch_size=config.train.train_batch_size,
-            shuffle=False,
+            shuffle=True,
             num_workers=self.num_workers,
             persistent_workers=self.persistent_workers,
             pin_memory=True,

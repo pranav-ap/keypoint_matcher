@@ -1,8 +1,7 @@
-import os
-
 import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
+import torchmetrics
 from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint, TQDMProgressBar
 from neptune.types import File
 
@@ -24,6 +23,7 @@ class Light(pl.LightningModule):
         self.matcher_model = MatcherModel()
 
         self.learning_rate = config.train.learning_rate
+        self.mae = torchmetrics.MeanAbsoluteError()
 
         self.save_hyperparameters({
             'learning_rate': self.learning_rate,
@@ -83,15 +83,11 @@ class Light(pl.LightningModule):
             target_coords_pred
         )
 
-        x, y = target_coords_pred[0]
-
         metrics = {
             "train/loss": loss,
-            "train/first_coords/x": x,
-            "train/first_coords/y": y,
+            "train/mae": self.mae(target_coords_pred, batch.patch_level_target_coords),
         }
 
-        # target_coords_pred = torch.clamp(target_coords_pred, min=0, max=1)
         target_coords_pred = (target_coords_pred + 1) * 15.5
         # target_coords_pred = target_coords_pred * 31.0
 
@@ -112,12 +108,12 @@ class Light(pl.LightningModule):
     def validation_step(self, batch: Match, batch_idx):
         loss, target_coords_pred = self._shared_step(batch)
 
-        # target_coords_pred = torch.clamp(target_coords_pred, min=0, max=1)
         target_coords_pred = (target_coords_pred + 1) * 15.5
         # target_coords_pred = target_coords_pred * 31.0
 
         metrics = {
             "val/loss": loss,
+            "val/mae": self.mae(target_coords_pred, batch.patch_level_target_coords),
         }
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
@@ -137,12 +133,12 @@ class Light(pl.LightningModule):
     def test_step(self, batch: Match, batch_idx):
         loss, target_coords_pred = self._shared_step(batch)
 
-        # target_coords_pred = torch.clamp(target_coords_pred, min=0, max=1)
         target_coords_pred = (target_coords_pred + 1) * 15.5
         # target_coords_pred = target_coords_pred * 31.0
 
         metrics = {
             "test/loss": loss,
+            "test/mae": self.mae(target_coords_pred, batch.patch_level_target_coords),
         }
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
@@ -164,15 +160,18 @@ class Light(pl.LightningModule):
             batch.patch_level_reference_coords, target_coords,
             batch.patch_level_target_coords,
             limit_count=limit_count,
-            n_columns=3,
+            n_columns=12,
         )
 
-        # out_path = config.paths.output.test_images
-        #
-        # if stage == 'train':
-        #     out_path = config.paths.output.train_images
-        # elif stage == 'val':
-        #     out_path = config.paths.output.val_images
+        # out_path = None
+
+        # match stage:
+        #     case 'train':
+        #         out_path = config.paths.output.train_images
+        #     case 'val':
+        #         out_path = config.paths.output.val_images
+        #     case 'test':
+        #         out_path = config.paths.output.test_images
 
         name = f'{stage}_epoch_{self.current_epoch}.png'
         # out_path = os.path.join(out_path, name)

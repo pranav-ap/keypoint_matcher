@@ -6,11 +6,11 @@ task:
     video: MOO07_mapping_easy
     videos:
         train:
-            - MOO07_mapping_easy
-#            - MOO09_short_1_updown
-#            - MGO07_mapping_easy
 #            - MGO08_mapping_hard
+#            - MGO07_mapping_easy
+            - MOO07_mapping_easy
         val:
+            - MOO09_short_1_updown
             - MOO10_short_2_panorama
             - MOO11_short_3_backandforth
         test:
@@ -21,7 +21,7 @@ task:
         - cam0
         - cam1
 
-    eda_mode: True  # True False
+    eda_mode: False  # True False
 
 experiment:
     model: smallnet  # resnet mobilenet
@@ -41,7 +41,7 @@ paths:
         val_images: ${paths.roots.output}/${experiment.name}/images/val
         test_images: ${paths.roots.output}/${experiment.name}/images/test
 
-    matches: ${paths.roots.project}/train_data.hdf5
+    matches: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/train_6/train_data.hdf5
     images: ${paths.roots.mav}/${task.cam}/data
 
 image:
@@ -51,8 +51,8 @@ image:
     patch_border: 2 # pixels 2 4
 
 train:
-    train_batch_size: 4  #  4
-    val_batch_size: 4  #  4
+    train_batch_size: 2  #  4
+    val_batch_size: 2  #  4
     num_patches_per_image: 120
 
     fast_dev_run: False  # True False
@@ -60,14 +60,14 @@ train:
 
     patience: 3
     max_epochs: 200
-    check_val_every_n_epoch: 3
+    check_val_every_n_epoch: 2
     num_sanity_val_steps: 1
-    log_every_n_steps: 1
+    log_every_n_steps: 50
     accumulate_grad_batches: 1
     learning_rate: 1e-4
 
 val:
-    num_patch_pairs_to_save: 60
+    num_patch_pairs_to_save: 90
 
 test:
     batch_size: 4
