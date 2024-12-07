@@ -20,7 +20,7 @@ class Light(pl.LightningModule):
         self.neptune_logger = neptune_logger
         self.tensorboard_logger = tensorboard_logger
 
-        self.matcher_model = MatcherModel()
+        self.model = MatcherModel()
 
         self.learning_rate = config.train.learning_rate
         self.mae = torchmetrics.MeanAbsoluteError()
@@ -36,121 +36,97 @@ class Light(pl.LightningModule):
         )
 
     def forward(self, reference_patches, target_patches, reference_coords):
-        target_coords_pred = self.matcher_model(
+        pred = self.model(
             reference_patches,
             target_patches,
             reference_coords,
         )
 
-        return target_coords_pred
+        return pred
 
     @staticmethod
-    def _compute_loss(target_coords, target_coords_pred):
-        # loss = F.mse_loss(
-        #     target_coords_pred,
-        #     target_coords.float() / 31.0,
-        # )
-
+    def _compute_loss(pred, target):
         # Scale targets to [-1, 1]
-        target_coords_scaled = target_coords.float() / 15.5 - 1  
-        loss = F.mse_loss(target_coords_pred, target_coords_scaled)
+        scaled_pred = target.float() / 15.5 - 1  
+        loss = F.mse_loss(pred, scaled_pred)
         
         return loss
-    
+
     def _shared_step(self, batch: Match):
-        target_coords_pred = self.matcher_model(
+        pred = self.model(
             batch.reference_patches,
             batch.target_patches,
             batch.patch_level_reference_coords,
         )
 
-        loss = self._compute_loss(
-            batch.patch_level_target_coords,
-            target_coords_pred
-        )
+        target = batch.patch_level_target_coords
 
-        return loss, target_coords_pred
+        loss = self._compute_loss(pred, target)
+
+        return loss, pred
 
     def training_step(self, batch: Match, batch_idx):
-        target_coords_pred = self.matcher_model(
+        pred = self.model(
             batch.reference_patches,
             batch.target_patches,
             batch.patch_level_reference_coords,
         )
 
-        loss = self._compute_loss(
-            batch.patch_level_target_coords,
-            target_coords_pred
-        )
+        target = batch.patch_level_target_coords
+
+        loss = self._compute_loss(pred, target)
+        pred = (pred + 1) * 15.5
 
         metrics = {
             "train/loss": loss,
-            "train/mae": self.mae(target_coords_pred, batch.patch_level_target_coords),
+            "train/mae": self.mae(pred, target),
         }
-
-        target_coords_pred = (target_coords_pred + 1) * 15.5
-        # target_coords_pred = target_coords_pred * 31.0
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(
-                batch,
-                target_coords_pred,
-                limit_count=limit_count,
-                stage='train'
-            )
+            self._log_images(batch, pred, limit_count=limit_count, stage='train')
 
         return loss
 
     @torch.no_grad()
     def validation_step(self, batch: Match, batch_idx):
-        loss, target_coords_pred = self._shared_step(batch)
+        loss, pred = self._shared_step(batch)
 
-        target_coords_pred = (target_coords_pred + 1) * 15.5
-        # target_coords_pred = target_coords_pred * 31.0
+        pred = (pred + 1) * 15.5
+        target = batch.patch_level_target_coords
 
         metrics = {
             "val/loss": loss,
-            "val/mae": self.mae(target_coords_pred, batch.patch_level_target_coords),
+            "val/mae": self.mae(pred, target),
         }
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(
-                batch,
-                target_coords_pred,
-                limit_count=limit_count,
-                stage='val'
-            )
+            self._log_images(batch, pred, limit_count=limit_count, stage='val')
 
         return metrics
 
     @torch.no_grad()
     def test_step(self, batch: Match, batch_idx):
-        loss, target_coords_pred = self._shared_step(batch)
+        loss, pred = self._shared_step(batch)
 
-        target_coords_pred = (target_coords_pred + 1) * 15.5
-        # target_coords_pred = target_coords_pred * 31.0
+        pred = (pred + 1) * 15.5
+        target = batch.patch_level_target_coords
 
         metrics = {
             "test/loss": loss,
-            "test/mae": self.mae(target_coords_pred, batch.patch_level_target_coords),
+            "test/mae": self.mae(pred, target),
         }
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(
-                batch,
-                target_coords_pred,
-                limit_count=limit_count,
-                stage='test'
-            )
+            self._log_images(batch, pred, limit_count=limit_count, stage='test')
 
         return metrics
 
@@ -160,7 +136,7 @@ class Light(pl.LightningModule):
             batch.patch_level_reference_coords, target_coords,
             batch.patch_level_target_coords,
             limit_count=limit_count,
-            n_columns=12,
+            n_columns=8,
         )
 
         # out_path = None
@@ -193,7 +169,7 @@ class Light(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
-            self.matcher_model.parameters(),
+            self.model.parameters(),
             lr=self.learning_rate
         )
 

@@ -6,8 +6,8 @@ task:
     video: MOO07_mapping_easy
     videos:
         train:
-#            - MGO08_mapping_hard
-#            - MGO07_mapping_easy
+            - MGO08_mapping_hard
+            - MGO07_mapping_easy
             - MOO07_mapping_easy
         val:
             - MOO09_short_1_updown
@@ -25,21 +25,22 @@ task:
 
 experiment:
     model: smallnet  # resnet mobilenet
-    name: ${experiment.model}
+    name: ${experiment.model}_3
 
 paths:
     roots:
-        ws: D:/thesis_code # /home/stud/ath/ath_ws  D:/thesis_code
+        ws: /home/stud/ath/ath_ws
+        # ws: D:/thesis_code
         mav: ${paths.roots.ws}/datasets/${task.dataset}/${task.video}/mav0
         project: ${paths.roots.ws}/keypoint_matcher
-        output: ${paths.roots.project}/output
+        output: ${paths.roots.project}/output/${experiment.name}
 
     output:
-        logs: ${paths.roots.output}/${experiment.name}/logs
-        checkpoints: ${paths.roots.output}/${experiment.name}/checkpoints
-        train_images: ${paths.roots.output}/${experiment.name}/images/train
-        val_images: ${paths.roots.output}/${experiment.name}/images/val
-        test_images: ${paths.roots.output}/${experiment.name}/images/test
+        logs: ${paths.roots.output}/logs
+        checkpoints: ${paths.roots.output}/checkpoints
+        train_images: ${paths.roots.output}/images/train
+        val_images: ${paths.roots.output}/images/val
+        test_images: ${paths.roots.output}/images/test
 
     matches: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/train_6/train_data.hdf5
     images: ${paths.roots.mav}/${task.cam}/data
@@ -58,7 +59,7 @@ train:
     fast_dev_run: False  # True False
     overfit_batches: 0
 
-    patience: 3
+    patience: 5
     max_epochs: 200
     check_val_every_n_epoch: 2
     num_sanity_val_steps: 1
@@ -67,7 +68,7 @@ train:
     learning_rate: 1e-4
 
 val:
-    num_patch_pairs_to_save: 90
+    num_patch_pairs_to_save: 80
 
 test:
     batch_size: 4

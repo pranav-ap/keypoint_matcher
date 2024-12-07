@@ -1,7 +1,7 @@
 output/
 data/
 .neptune
-nohup.out
+*.out
 .nfs*
 
 # Byte-compiled / optimized / DLL files
