@@ -34,21 +34,23 @@ def positionalencoding2d(d_model, height, width):
     pe[d_model + 1::2, :, :] = torch.cos(pos_h * div_term).transpose(0, 1).unsqueeze(2).repeat(1, 1, width)
 
     return pe
-    
+
 
 class MatcherModel(nn.Module):
     def __init__(self):
         super().__init__()
 
-        # self.positional_encoding = positionalencoding2d(d_model, height=32, width=32)
+        self.positional_encoding = positionalencoding2d(64, height=32, width=32).unsqueeze(0).to('cuda').detach()
 
         in_channels = 3 * 2 + 2
 
-        self.model = nn.Sequential(
+        self.model1 = nn.Sequential(
             nn.Conv2d(in_channels, 64, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(),
+        )
 
+        self.model2 = nn.Sequential(
             nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(),
@@ -80,15 +82,12 @@ class MatcherModel(nn.Module):
 
     def forward(self, reference_patches, target_patches, reference_coords):
         reference_coords = reference_coords / 31.0
-        reference_coords = reference_coords.unsqueeze(-1).unsqueeze(-1).expand(
-            -1, -1, reference_patches.size(2), reference_patches.size(3)
-        )
-
-        # positional_encoding = self.positional_encoding[:, :height, :width]
-        # reference_coords = reference_coords + positional_encoding
-
+        height, width = reference_patches.shape[2], reference_patches.shape[3]
+        reference_coords = reference_coords.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, height, width)
+        
         combined = torch.cat([reference_patches, target_patches, reference_coords], dim=1)
-
-        target_coords = self.model(combined)
+        x = self.model1(combined)
+        x = x + self.positional_encoding
+        target_coords = self.model2(x)
 
         return target_coords

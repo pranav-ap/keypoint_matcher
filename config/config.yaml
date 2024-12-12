@@ -25,7 +25,7 @@ task:
 
 experiment:
     model: smallnet  # resnet mobilenet
-    name: ${experiment.model}_3
+    name: ${experiment.model}_pos_encoding_after_64_52
 
 paths:
     roots:
@@ -42,7 +42,7 @@ paths:
         val_images: ${paths.roots.output}/images/val
         test_images: ${paths.roots.output}/images/test
 
-    matches: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/train_6/train_data.hdf5
+    matches: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output_all/train/train_data.hdf5
     images: ${paths.roots.mav}/${task.cam}/data
 
 image:

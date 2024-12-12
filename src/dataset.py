@@ -202,7 +202,7 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         return reference_patches, patch_level_reference_coords
 
-    def _prepare_targets(self, target_image_name, target_coords):
+    def _prepare_targets(self, target_image_name, target_coords, image_idx):
         target_image = self._get_image(target_image_name)
 
         if self.stage == 'train' and self.image_augmentation_no_kp:
@@ -254,7 +254,7 @@ class MatchesDataset(torch.utils.data.Dataset):
 
             if self.perturb_target:
                 if self.stage in ['val', 'test']:
-                    np.random.seed(index)
+                    np.random.seed(index + image_idx)
 
                 perturb_size = (desired_patch_size - config.image.patch_border) // 2
                 perturb_x = np.random.randint(2, perturb_size)
@@ -318,7 +318,8 @@ class MatchesDataset(torch.utils.data.Dataset):
         target_coords = [(x, y) for x, y in target_coords]
         targets = self._prepare_targets(
             target_image_name,
-            target_coords
+            target_coords,
+            idx
         )
 
         return references, targets
@@ -358,26 +359,15 @@ class MatchesDataModule(L.LightningDataModule):
             ]
         )
 
-        pad_mode = cv2.BORDER_CONSTANT 
-        pad_val = 0 
-        p = 1 if config.task.eda_mode else 0.5
+        # p = 1 if config.task.eda_mode else 0.5
 
-        self.image_augmentation_kp = A.Compose(
-            transforms=[
-                # A.Perspective(
-                #     # scale=(0.1, 0.3),
-                #     p=p,
-                #     fit_output=True,
-                #     pad_mode=pad_mode,
-                #     pad_val=pad_val,
-                # ),
-                A.SafeRotate(
-                    p=p,
-                    limit=(-10, 10)
-                ),
-            ],
-            keypoint_params=A.KeypointParams(format='xy')
-        )
+        # self.image_augmentation_kp = A.Compose(
+        #     transforms=[
+        #         # A.Perspective(scale=(0.1, 0.3), p=p, fit_output=True, pad_mode=cv2.BORDER_CONSTANT, pad_val=0),
+        #         A.SafeRotate(p=p, limit=(-10, 10)), 
+        #     ],
+        #     keypoint_params=A.KeypointParams(format='xy')
+        # )
 
         self.patch_normalize = T.Compose([
             T.ToTensor(),
