@@ -34,13 +34,13 @@ def positionalencoding2d(d_model, height, width):
     pe[d_model + 1::2, :, :] = torch.cos(pos_h * div_term).transpose(0, 1).unsqueeze(2).repeat(1, 1, width)
 
     return pe
-
+    
 
 class MatcherModel(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.positional_encoding = positionalencoding2d(64, height=32, width=32).unsqueeze(0).to('cuda').detach()
+        self.positional_encoding = positionalencoding2d(128, height=32, width=32).unsqueeze(0).to('cuda')
 
         in_channels = 3 * 2 + 2
 
@@ -48,13 +48,13 @@ class MatcherModel(nn.Module):
             nn.Conv2d(in_channels, 64, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(),
-        )
 
-        self.model2 = nn.Sequential(
             nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(),
+        )
 
+        self.model2 = nn.Sequential(
             nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(256),
             nn.ReLU(),

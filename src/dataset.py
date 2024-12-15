@@ -153,7 +153,7 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         keypoints = transformed['keypoints']
         assert len(keypoints) == 1, "Expected a single transformed keypoint"
-        keypoint = int(keypoints[0][0]), int(keypoints[0][1])
+        keypoint = keypoints[0][0], keypoints[0][1]
 
         return patch, keypoint
 
@@ -224,7 +224,7 @@ class MatchesDataset(torch.utils.data.Dataset):
         patch_level_coords = []
 
         for index, (x, y) in enumerate(target_coords):
-            keypoint = int(x), int(y)
+            keypoint = x, y
 
             left, upper, right, lower = self._get_patch_boundary(
                 target_image,
@@ -248,7 +248,7 @@ class MatchesDataset(torch.utils.data.Dataset):
                 assert len(transformed['keypoints']) > 0, "No keypoints found after rotation"
                 patch = Image.fromarray(transformed['image'])
                 x, y = transformed['keypoints'][0]
-                keypoint = int(x), int(y)
+                keypoint = x, y
 
             center_point = x, y = keypoint
 

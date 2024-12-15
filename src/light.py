@@ -160,12 +160,12 @@ class Light(pl.LightningModule):
                 name=name,
             )
 
-        if self.tensorboard_logger is not None:
-            self.tensorboard_logger.experiment.add_images(
-                tag=f"{stage}_images",
-                img_tensor=get_tensor_grid(image_grid),
-                global_step=self.global_step
-            )
+        # if self.tensorboard_logger is not None:
+        #     self.tensorboard_logger.experiment.add_images(
+        #         tag=f"{stage}_images",
+        #         img_tensor=get_tensor_grid(image_grid),
+        #         global_step=self.global_step
+        #     )
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
