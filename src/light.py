@@ -45,95 +45,155 @@ class Light(pl.LightningModule):
         return pred
 
     @staticmethod
-    def _compute_loss(pred, target):
+    def _compute_coords_loss(pred, target):
         # Scale targets to [-1, 1]
-        scaled_pred = target.float() / 15.5 - 1  
-        loss = F.mse_loss(pred, scaled_pred)
+        scaled_target = target.float() / 15.5 - 1  
+        loss = F.mse_loss(pred, scaled_target)
+        
+        return loss
+
+    @staticmethod
+    def _compute_rotation_loss(pred, target):
+        # Scale targets from radians [-pi, pi] to [-1, 1]
+        scaled_target = target / torch.pi
+        loss = F.mse_loss(pred, scaled_target)
+        
+        return loss
+
+    @staticmethod
+    def _compute_confidence_loss(confidence_pred, pred, target):
+        mae = torch.mean(torch.abs(pred - target), dim=1)
+        # Normalize MAE to [0, 1]
+        normalized_mae = mae / max_error
+
+        confidence = 1 - normalized_mae
+        confidence = torch.clamp(confidence, min=0.0, max=1.0)
+
+        loss = F.mse_loss(confidence_pred, confidence)
         
         return loss
 
     def _shared_step(self, batch: Match):
-        pred = self.model(
+        coords_pred, rotation_pred, confidence_pred = self.model(
             batch.reference_patches,
             batch.target_patches,
             batch.patch_level_reference_coords,
         )
 
-        target = batch.patch_level_target_coords
+        # Calc Loss
 
-        loss = self._compute_loss(pred, target)
+        coords = batch.patch_level_target_coords
+        coords_loss = self._compute_coords_loss(coords_pred, coords)
 
-        return loss, pred
+        rotation = batch.rotations
+        rotation_loss = self._compute_rotation_loss(rotation_pred, rotation)
+
+        confidence_loss = self._compute_coords_loss(confidence_pred, coords_pred, coords)
+
+        return coords_loss, rotation_loss, confidence_loss, coords_pred, rotation_pred, confidence_pred
 
     def training_step(self, batch: Match, batch_idx):
-        pred = self.model(
+        coords_pred, rotation_pred, confidence_pred = self.model(
             batch.reference_patches,
             batch.target_patches,
             batch.patch_level_reference_coords,
         )
 
-        target = batch.patch_level_target_coords
+        # Calc Loss
 
-        loss = self._compute_loss(pred, target)
-        pred = (pred + 1) * 15.5
+        coords = batch.patch_level_target_coords
+        coords_loss = self._compute_coords_loss(coords_pred, coords)
+
+        rotation = batch.rotations
+        rotation_loss = self._compute_rotation_loss(rotation_pred, rotation)
+
+        confidence_loss = self._compute_coords_loss(confidence_pred, coords_pred, coords)
+
+        loss = coords_loss + rotation_loss + confidence_loss
+
+        # Log metrics
+
+        coords_pred = (coords_pred + 1) * 15.5
 
         metrics = {
             "train/loss": loss,
-            "train/mae": self.mae(pred, target),
+            "train/coords_loss": coords_loss,
+            "train/rotation_loss": rotation_loss,
+            "train/confidence_loss": confidence_loss,
+            "train/coords_mae": self.mae(coords_pred, coords),
         }
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(batch, pred, limit_count=limit_count, stage='train')
+            self._log_images(batch, coords_pred, limit_count=limit_count, stage='train')
 
         return loss
 
     @torch.no_grad()
     def validation_step(self, batch: Match, batch_idx):
-        loss, pred = self._shared_step(batch)
+        coords_loss, rotation_loss, confidence_loss, coords_pred, _, _ = self._shared_step(batch)
 
-        pred = (pred + 1) * 15.5
-        target = batch.patch_level_target_coords
+        # Calc Loss
+
+        loss = coords_loss + rotation_loss + confidence_loss
+
+        # Log metrics
+
+        coords_pred = (coords_pred + 1) * 15.5
+        coords = batch.patch_level_target_coords
 
         metrics = {
             "val/loss": loss,
-            "val/mae": self.mae(pred, target),
+            "val/coords_loss": coords_loss,
+            "val/rotation_loss": rotation_loss,
+            "val/confidence_loss": confidence_loss,
+            "val/coords_mae": self.mae(coords_pred, coords),
         }
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(batch, pred, limit_count=limit_count, stage='val')
+            self._log_images(batch, coords_pred, limit_count=limit_count, stage='val')
 
         return metrics
 
     @torch.no_grad()
     def test_step(self, batch: Match, batch_idx):
-        loss, pred = self._shared_step(batch)
+        coords_loss, rotation_loss, confidence_loss, coords_pred, _, _ = self._shared_step(batch)
 
-        pred = (pred + 1) * 15.5
-        target = batch.patch_level_target_coords
+        # Calc Loss
+
+        loss = coords_loss + rotation_loss + confidence_loss
+
+        # Log metrics
+
+        coords_pred = (coords_pred + 1) * 15.5
+        coords = batch.patch_level_target_coords
 
         metrics = {
             "test/loss": loss,
-            "test/mae": self.mae(pred, target),
+            "test/coords_loss": coords_loss,
+            "test/rotation_loss": rotation_loss,
+            "test/confidence_loss": confidence_loss,
+            "test/coords_mae": self.mae(coords_pred, coords),
         }
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(batch, pred, limit_count=limit_count, stage='test')
+            self._log_images(batch, coords_pred, limit_count=limit_count, stage='test')
 
         return metrics
 
     def _log_images(self, batch, target_coords, limit_count=None, stage=None):
         image_grid = show_batch(
             batch.reference_patches, batch.target_patches,
-            batch.patch_level_reference_coords, target_coords,
+            batch.patch_level_reference_coords, 
+            target_coords,
             batch.patch_level_target_coords,
             limit_count=limit_count,
             n_columns=8,

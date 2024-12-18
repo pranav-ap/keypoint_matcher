@@ -22,6 +22,8 @@ class Match:
     reference_patches: Optional[torch.Tensor] = None
     target_patches: Optional[torch.Tensor] = None
 
+    rotations: Optional[torch.Tensor] = None
+
     patch_level_reference_coords: Optional[torch.Tensor] = None
     patch_level_target_coords: Optional[torch.Tensor] = None
 
@@ -30,12 +32,16 @@ def match_collate_fn(batch):
     reference_patches = torch.cat([match.reference_patches for match in batch], dim=0)
     target_patches = torch.cat([match.target_patches for match in batch], dim=0)
 
+    rotations = torch.cat([match.rotations for match in batch], dim=0)
+
     patch_level_reference_coords = torch.cat([match.patch_level_reference_coords for match in batch], dim=0)
     patch_level_target_coords = torch.cat([match.patch_level_target_coords for match in batch], dim=0)
 
     return Match(
         reference_patches,
         target_patches,
+
+        rotations,
 
         patch_level_reference_coords,
         patch_level_target_coords,
@@ -74,7 +80,6 @@ class MatchesDataset(torch.utils.data.Dataset):
 
                 references = self._file[f'{video}/{cam}/reference_coords']
                 targets = self._file[f'{video}/{cam}/target_coords']
-                indices = self._file[f'{video}/{cam}/indices']
 
                 logger.info(f'Image Pair Counts : {video} {cam} : {len(references.items())}')
 
@@ -137,8 +142,8 @@ class MatchesDataset(torch.utils.data.Dataset):
         transform = A.Compose(
             transforms=[
                 A.Crop(
-                    x_min=left, y_min=upper,
-                    x_max=right, y_max=lower,
+                    x_min=round(left), y_min=round(upper),
+                    x_max=round(right), y_max=round(lower),
                 ),
             ],
             keypoint_params=A.KeypointParams(format='xy')
@@ -198,7 +203,7 @@ class MatchesDataset(torch.utils.data.Dataset):
             patch_level_coords.append(keypoint)
 
         reference_patches = torch.stack(patches)
-        patch_level_reference_coords = torch.tensor(patch_level_coords, dtype=torch.int32)
+        patch_level_reference_coords = torch.tensor(patch_level_coords, dtype=torch.float32)
 
         return reference_patches, patch_level_reference_coords
 
@@ -284,7 +289,7 @@ class MatchesDataset(torch.utils.data.Dataset):
             patch_level_coords.append(keypoint)
 
         target_patches = torch.stack(patches)
-        patch_level_target_coords = torch.tensor(patch_level_coords, dtype=torch.int32)
+        patch_level_target_coords = torch.tensor(patch_level_coords, dtype=torch.float32)
 
         return target_patches, patch_level_target_coords
 
@@ -305,8 +310,8 @@ class MatchesDataset(torch.utils.data.Dataset):
         assert N != 0
         indices = indices[:N]
 
-        reference_coords = references_group[pair_name][()][indices].astype(np.int32)
-        target_coords = targets_group[pair_name][()][indices].astype(np.int32)
+        reference_coords = references_group[pair_name][()][indices].astype(np.float32)
+        target_coords = targets_group[pair_name][()][indices].astype(np.float32)
         assert reference_coords.shape == target_coords.shape
 
         reference_coords = [(x, y) for x, y in reference_coords]
@@ -322,7 +327,11 @@ class MatchesDataset(torch.utils.data.Dataset):
             idx
         )
 
-        return references, targets
+        rotations_group = self._file[f'{config.task.video}/{config.task.cam}/rotations']
+        rotations = rotations_group[pair_name][()][indices].astype(np.float32)
+        rotations = torch.tensor(rotations, dtype=torch.float32)
+
+        return references, targets, rotations
 
     def __getitem__(self, idx):
         if not hasattr(self, '_file'):
@@ -330,13 +339,15 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         assert hasattr(self, '_file')
 
-        references, targets = self._prepare_images(idx)
+        references, targets, rotations = self._prepare_images(idx)
         reference_patches, patch_level_reference_coords = references
         target_patches, patch_level_target_coords = targets
 
         match = Match(
             reference_patches,
-            target_patches,
+            target_patches, 
+            
+            rotations,
 
             patch_level_reference_coords,
             patch_level_target_coords,
