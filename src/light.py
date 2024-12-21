@@ -21,6 +21,7 @@ class Light(pl.LightningModule):
         self.tensorboard_logger = tensorboard_logger
 
         self.model = MatcherModel()
+        self.model = self.model.to('cuda')
 
         self.learning_rate = config.train.learning_rate
         self.mae = torchmetrics.MeanAbsoluteError()
@@ -62,25 +63,26 @@ class Light(pl.LightningModule):
         return loss
 
     @staticmethod
-    def _compute_confidence_loss(confidence_pred, pred, target):
-        euclidean_distance = torch.norm(pred - target, p=2, dim=1)
+    def _compute_confidence_loss(prob_pred, coords_pred, coords):
+        std_dev = 1.0
+        covariance_matrix = torch.diag(torch.tensor([std_dev ** 2, std_dev ** 2]))
 
-        # Normalize euclidean distance to [0, 1]
-        max_error = euclidean_distance.max().detach()
-        normalized_distance = euclidean_distance / max_error
-        # what if some max_error is too big?
+        gaussian = torch.distributions.MultivariateNormal(
+            loc=coords, 
+            covariance_matrix=covariance_matrix
+        )
 
-        confidence = 1 - normalized_distance
-        confidence = torch.clamp(confidence, min=0.0, max=1.0)
+        raw_probabilities = torch.exp(gaussian.log_prob(coords_pred))
+        max_probabilities = torch.exp(gaussian.log_prob(coords))
+        # Normalize probabilities to make p = 1 when coords_pred = coords
+        normalized_probabilities = raw_probabilities / max_probabilities
 
-        confidence_pred = confidence_pred.squeeze()
-
-        loss = F.mse_loss(confidence_pred, confidence)
+        loss = F.mse_loss(prob_pred, normalized_probabilities)
         
         return loss
 
     def _shared_step(self, batch: Match):
-        coords_pred, rotation_pred, confidence_pred = self.model(
+        coords_pred, rotation_pred, std_dev_pred = self.model(
             batch.reference_patches,
             batch.target_patches,
             batch.patch_level_reference_coords,
@@ -94,15 +96,15 @@ class Light(pl.LightningModule):
         rotation = batch.rotations
         rotation_loss = self._compute_rotation_loss(rotation_pred, rotation)
 
-        confidence_loss = self._compute_confidence_loss(confidence_pred, coords_pred, coords)
+        std_dev_loss = self._compute_confidence_loss(std_dev_pred, coords_pred, coords)
 
-        return coords_loss, rotation_loss, confidence_loss, coords_pred, rotation_pred, confidence_pred
+        return coords_loss, rotation_loss, std_dev_loss, coords_pred, rotation_pred, std_dev_pred
 
     def training_step(self, batch: Match, batch_idx):
         coords_loss, rotation_loss, confidence_loss, coords_pred, rotation_pred, confidence_pred = self._shared_step(batch)
 
         # Calc Loss
-        
+
         loss = coords_loss + rotation_loss + confidence_loss
 
         # Log metrics
