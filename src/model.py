@@ -88,8 +88,7 @@ class MatcherModel(nn.Module):
         )
         
         self.confidence_head = nn.Sequential(
-            nn.Linear(64, 1),
-            nn.Sigmoid(),
+            nn.Linear(64, 2),
         )
 
     def forward(self, reference_patches, target_patches, reference_coords):
@@ -99,8 +98,10 @@ class MatcherModel(nn.Module):
         
         combined = torch.cat([reference_patches, target_patches, reference_coords], dim=1)
         x = self.feature_extractor(combined)
+        # x = x.to('cuda')
         x = x + self.positional_encoding
         x = self.model(x)
+        # x = x.to('cuda')
 
         target_coords = self.coords_head(x)
         target_rotation = self.rotation_head(x)

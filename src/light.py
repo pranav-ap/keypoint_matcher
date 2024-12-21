@@ -56,18 +56,24 @@ class Light(pl.LightningModule):
     def _compute_rotation_loss(pred, target):
         # Scale targets from radians [-pi, pi] to [-1, 1]
         scaled_target = target / torch.pi
+        pred = pred.squeeze()
         loss = F.mse_loss(pred, scaled_target)
         
         return loss
 
     @staticmethod
     def _compute_confidence_loss(confidence_pred, pred, target):
-        mae = torch.mean(torch.abs(pred - target), dim=1)
-        # Normalize MAE to [0, 1]
-        normalized_mae = mae / max_error
+        euclidean_distance = torch.norm(pred - target, p=2, dim=1)
 
-        confidence = 1 - normalized_mae
+        # Normalize euclidean distance to [0, 1]
+        max_error = euclidean_distance.max().detach()
+        normalized_distance = euclidean_distance / max_error
+        # what if some max_error is too big?
+
+        confidence = 1 - normalized_distance
         confidence = torch.clamp(confidence, min=0.0, max=1.0)
+
+        confidence_pred = confidence_pred.squeeze()
 
         loss = F.mse_loss(confidence_pred, confidence)
         
@@ -88,27 +94,15 @@ class Light(pl.LightningModule):
         rotation = batch.rotations
         rotation_loss = self._compute_rotation_loss(rotation_pred, rotation)
 
-        confidence_loss = self._compute_coords_loss(confidence_pred, coords_pred, coords)
+        confidence_loss = self._compute_confidence_loss(confidence_pred, coords_pred, coords)
 
         return coords_loss, rotation_loss, confidence_loss, coords_pred, rotation_pred, confidence_pred
 
     def training_step(self, batch: Match, batch_idx):
-        coords_pred, rotation_pred, confidence_pred = self.model(
-            batch.reference_patches,
-            batch.target_patches,
-            batch.patch_level_reference_coords,
-        )
+        coords_loss, rotation_loss, confidence_loss, coords_pred, rotation_pred, confidence_pred = self._shared_step(batch)
 
         # Calc Loss
-
-        coords = batch.patch_level_target_coords
-        coords_loss = self._compute_coords_loss(coords_pred, coords)
-
-        rotation = batch.rotations
-        rotation_loss = self._compute_rotation_loss(rotation_pred, rotation)
-
-        confidence_loss = self._compute_coords_loss(confidence_pred, coords_pred, coords)
-
+        
         loss = coords_loss + rotation_loss + confidence_loss
 
         # Log metrics
