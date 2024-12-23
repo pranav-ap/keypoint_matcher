@@ -16,6 +16,30 @@ denormalize = T.Compose([
     )
 ])
 
+renormalize = T.Compose([
+    T.Normalize(
+        mean=[0.5, 0.5, 0.5],  # Adjust these mean values for brightness
+        std=[0.5, 0.5, 0.5]    # Adjust these std values for contrast
+    )
+])
+
+def min_max_normalize(tensor, min_val=0.0, max_val=1.0):
+    """
+    Perform Min-Max Normalization on a tensor.
+    Args:
+        tensor (torch.Tensor): Input tensor with pixel values.
+        min_val (float): Minimum value for normalization (default: 0.0).
+        max_val (float): Maximum value for normalization (default: 1.0).
+    Returns:
+        torch.Tensor: Min-Max normalized tensor.
+    """
+    tensor_min = tensor.min()
+    tensor_max = tensor.max()
+    # Scale the tensor to the desired range
+    normalized_tensor = (tensor - tensor_min) / (tensor_max - tensor_min)
+    normalized_tensor = normalized_tensor * (max_val - min_val) + min_val
+    return normalized_tensor
+    
 # denormalize = T.Compose([
 #     T.Normalize(mean=[-0.5 / 0.5], std=[1 / 0.5]),
 # ])
@@ -45,6 +69,8 @@ def show_batch(reference_patches, target_patches, patch_level_reference_coords, 
 
     def prepare_patch(patch, x, y, color):
         patch = denormalize(patch)
+        # patch = renormalize(patch) 
+        patch = min_max_normalize(patch, min_val=0.0, max_val=1.0) 
         patch = to_pil(patch)
 
         if patch.mode != "RGB":
@@ -58,6 +84,8 @@ def show_batch(reference_patches, target_patches, patch_level_reference_coords, 
 
     def prepare_target_patch(patch, x, y, a, b):
         patch = denormalize(patch)
+        # patch = renormalize(patch)
+        patch = min_max_normalize(patch, min_val=0.0, max_val=1.0)  
         patch = to_pil(patch)
 
         if patch.mode != "RGB":

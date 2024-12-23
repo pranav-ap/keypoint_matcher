@@ -365,20 +365,10 @@ class MatchesDataModule(L.LightningDataModule):
 
         self.image_augmentation_no_kp = A.Compose(
             transforms=[
-                A.Defocus(p=0.5, radius=1),
-                A.GaussNoise(p=0.5, var_limit=(10.0, 30.0)),
+                A.Defocus(p=0.5, radius=2),
+                # A.GaussNoise(p=1, var_limit=0.01),
             ]
         )
-
-        # p = 1 if config.task.eda_mode else 0.5
-
-        # self.image_augmentation_kp = A.Compose(
-        #     transforms=[
-        #         # A.Perspective(scale=(0.1, 0.3), p=p, fit_output=True, pad_mode=cv2.BORDER_CONSTANT, pad_val=0),
-        #         A.SafeRotate(p=p, limit=(-10, 10)), 
-        #     ],
-        #     keypoint_params=A.KeypointParams(format='xy')
-        # )
 
         self.patch_normalize = T.Compose([
             T.ToTensor(),

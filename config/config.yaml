@@ -6,6 +6,7 @@ task:
     video: MOO07_mapping_easy
     videos:
         train:
+            # - MOO09_short_1_updown
             - MOO07_mapping_easy
             # - MOO08_mapping_hard
             # - MGO07_mapping_easy
@@ -44,7 +45,7 @@ paths:
         val_images: ${paths.roots.output}/images/val
         test_images: ${paths.roots.output}/images/test
 
-    matches: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output_filtered_testing/train/train_data.hdf5
+    matches: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output_normal/train/train_data.hdf5
     images: ${paths.roots.mav}/${task.cam}/data
 
 image:
