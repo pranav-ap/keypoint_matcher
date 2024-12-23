@@ -191,6 +191,7 @@ class Light(pl.LightningModule):
             batch.patch_level_reference_coords, 
             target_coords,
             batch.patch_level_target_coords,
+            batch.rotations,
             limit_count=limit_count,
             n_columns=8,
         )

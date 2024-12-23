@@ -1,8 +1,8 @@
 import math
-
+import torch
 import matplotlib.pyplot as plt
 import torchvision.transforms as T
-from PIL import Image, ImageOps, ImageDraw
+from PIL import Image, ImageOps, ImageDraw, ImageFont
 
 plt.style.use('seaborn-v0_8-whitegrid')
 
@@ -16,12 +16,6 @@ denormalize = T.Compose([
     )
 ])
 
-renormalize = T.Compose([
-    T.Normalize(
-        mean=[0.5, 0.5, 0.5],  # Adjust these mean values for brightness
-        std=[0.5, 0.5, 0.5]    # Adjust these std values for contrast
-    )
-])
 
 def min_max_normalize(tensor, min_val=0.0, max_val=1.0):
     """
@@ -49,27 +43,49 @@ def get_tensor_grid(pil_image):
     return to_tensor(pil_image).unsqueeze(0)
 
 
-def show_batch(reference_patches, target_patches, patch_level_reference_coords, patch_level_target_coords, patch_level_target_coords_true, limit_count=None, border_size=2, border_color="white", n_columns=2):
+def show_batch(
+    reference_patches, target_patches, 
+    patch_level_reference_coords, 
+
+    patch_level_target_coords, patch_level_target_coords_true, 
+    rotations_true, rotations=None, 
+    limit_count=None, border_size=2, border_color="white", n_columns=2
+    ):
     assert limit_count is None or limit_count > 0
 
     num_patches = reference_patches.size(0)
     if limit_count is not None:
         num_patches = min(limit_count, num_patches)
+    
+    rotations_true = rotations_true.clone().detach()
+    rotations_true = rotations_true * (180 / torch.pi) # Convert radians to degrees
+
+    print(rotations_true[:num_patches])
+
+    if rotations is not None:
+        rotations = rotations.clone().detach()
+        rotations = rotations * (180 / torch.pi) # Convert radians to degrees
+
+    try:
+        font = ImageFont.truetype("arial.ttf", 20)  # Use Arial font, size 18
+    except IOError:
+        font = ImageFont.load_default()  # Fallback to default font if Arial is not available
 
     patch_size = 128
     extra_col_gap = 0
     radius = 1
 
+    gap_for_text = 25
+
     num_rows = (num_patches + n_columns - 1) // n_columns
 
     combined_width = n_columns * (patch_size * 2 + border_size * 4) + (n_columns - 1) * extra_col_gap
-    combined_height = num_rows * (patch_size + border_size * 2)
+    combined_height = num_rows * (patch_size + border_size * 2 + gap_for_text)
 
     combined_image = Image.new('RGB', (combined_width, combined_height), color=(255, 255, 255))
 
     def prepare_patch(patch, x, y, color):
         patch = denormalize(patch)
-        # patch = renormalize(patch) 
         patch = min_max_normalize(patch, min_val=0.0, max_val=1.0) 
         patch = to_pil(patch)
 
@@ -84,7 +100,6 @@ def show_batch(reference_patches, target_patches, patch_level_reference_coords, 
 
     def prepare_target_patch(patch, x, y, a, b):
         patch = denormalize(patch)
-        # patch = renormalize(patch)
         patch = min_max_normalize(patch, min_val=0.0, max_val=1.0)  
         patch = to_pil(patch)
 
@@ -109,14 +124,28 @@ def show_batch(reference_patches, target_patches, patch_level_reference_coords, 
         a, b = patch_level_target_coords_true[i]
         target_patch = prepare_target_patch(target_patch, x, y, a, b)
 
+        rotation_true = rotations_true[i]
+        rotation = rotations[i] if rotations is not None else 0
+
         row = i // n_columns
         col = i % n_columns
 
-        y = row * (patch_size + 2 * border_size)
+        y = row * (patch_size + 2 * border_size + gap_for_text)
         x1 = col * (patch_size * 2 + border_size * 4) + col * extra_col_gap
         x2 = x1 + patch_size + 2 * border_size
 
         combined_image.paste(reference_patch, (x1, y))
         combined_image.paste(target_patch, (x2, y))
+
+        # Draw rotation value below the patches
+        draw = ImageDraw.Draw(combined_image)
+
+        text_x = x1 + patch_size // 2
+        text_y = y + patch_size + 2 * border_size + 10  
+        draw.text((text_x, text_y), f"{rotation_true:.2f}°", fill="black", anchor="mm", font=font)
+
+        text_x = x2 + patch_size // 2
+        text_y = y + patch_size + 2 * border_size + 10  
+        draw.text((text_x, text_y), f"{rotation:.2f}°", fill="black", anchor="mm", font=font)
 
     return combined_image
