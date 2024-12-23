@@ -60,7 +60,7 @@ def show_batch(
     rotations_true = rotations_true.clone().detach()
     rotations_true = rotations_true * (180 / torch.pi) # Convert radians to degrees
 
-    print(rotations_true[:num_patches])
+    # print(rotations_true[:num_patches])
 
     if rotations is not None:
         rotations = rotations.clone().detach()
@@ -125,7 +125,7 @@ def show_batch(
         target_patch = prepare_target_patch(target_patch, x, y, a, b)
 
         rotation_true = rotations_true[i]
-        rotation = rotations[i] if rotations is not None else 0
+        rotation = f"{rotations[i]:.2f}°" if rotations is not None else '-'
 
         row = i // n_columns
         col = i % n_columns
@@ -146,6 +146,6 @@ def show_batch(
 
         text_x = x2 + patch_size // 2
         text_y = y + patch_size + 2 * border_size + 10  
-        draw.text((text_x, text_y), f"{rotation:.2f}°", fill="black", anchor="mm", font=font)
+        draw.text((text_x, text_y), f"{rotation}", fill="black", anchor="mm", font=font)
 
     return combined_image

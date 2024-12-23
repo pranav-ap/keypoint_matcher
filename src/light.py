@@ -123,13 +123,13 @@ class Light(pl.LightningModule):
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(batch, coords_pred, limit_count=limit_count, stage='train')
+            self._log_images(batch, coords_pred, rotation_pred, limit_count=limit_count, stage='train')
 
         return loss
 
     @torch.no_grad()
     def validation_step(self, batch: Match, batch_idx):
-        coords_loss, rotation_loss, confidence_loss, coords_pred, _, _ = self._shared_step(batch)
+        coords_loss, rotation_loss, confidence_loss, coords_pred, rotation_pred, _ = self._shared_step(batch)
 
         # Calc Loss
 
@@ -152,13 +152,13 @@ class Light(pl.LightningModule):
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(batch, coords_pred, limit_count=limit_count, stage='val')
+            self._log_images(batch, coords_pred, rotation_pred, limit_count=limit_count, stage='val')
 
         return metrics
 
     @torch.no_grad()
     def test_step(self, batch: Match, batch_idx):
-        coords_loss, rotation_loss, confidence_loss, coords_pred, _, _ = self._shared_step(batch)
+        coords_loss, rotation_loss, confidence_loss, coords_pred, rotation_pred, _ = self._shared_step(batch)
 
         # Calc Loss
 
@@ -181,17 +181,17 @@ class Light(pl.LightningModule):
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(batch, coords_pred, limit_count=limit_count, stage='test')
+            self._log_images(batch, coords_pred, rotation_pred, limit_count=limit_count, stage='test')
 
         return metrics
 
-    def _log_images(self, batch, target_coords, limit_count=None, stage=None):
+    def _log_images(self, batch, target_coords, rotation_pred, limit_count=None, stage=None):
         image_grid = show_batch(
             batch.reference_patches, batch.target_patches,
             batch.patch_level_reference_coords, 
-            target_coords,
-            batch.patch_level_target_coords,
-            batch.rotations,
+            target_coords, batch.patch_level_target_coords,
+            rotations_true=batch.rotations,
+            rotations=rotation_pred,
             limit_count=limit_count,
             n_columns=8,
         )
