@@ -64,7 +64,7 @@ def show_batch(
 
     if rotations is not None:
         rotations = rotations.clone().detach()
-        rotations = rotations * (180 / torch.pi) # Convert radians to degrees
+        rotations = rotations * 180  # Convert [-1, 1] to [-180, 180]
 
     try:
         font = ImageFont.truetype("arial.ttf", 20)  # Use Arial font, size 18
@@ -124,8 +124,8 @@ def show_batch(
         a, b = patch_level_target_coords_true[i]
         target_patch = prepare_target_patch(target_patch, x, y, a, b)
 
-        rotation_true = rotations_true[i]
-        rotation = f"{rotations[i]:.2f}°" if rotations is not None else '-'
+        rotation_true = rotations_true[i].item()
+        rotation = f"{rotations[i].item():.2f}°" if rotations is not None else '-'
 
         row = i // n_columns
         col = i % n_columns

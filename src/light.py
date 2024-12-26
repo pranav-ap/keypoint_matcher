@@ -65,7 +65,7 @@ class Light(pl.LightningModule):
     @staticmethod
     def _compute_confidence_loss(prob_pred, coords_pred, coords):
         std_dev = 1.0
-        covariance_matrix = torch.diag(torch.tensor([std_dev ** 2, std_dev ** 2]))
+        covariance_matrix = torch.diag(torch.tensor([std_dev ** 2, std_dev ** 2], device=coords.device))
 
         gaussian = torch.distributions.MultivariateNormal(
             loc=coords, 
@@ -77,7 +77,7 @@ class Light(pl.LightningModule):
         # Normalize probabilities to make p = 1 when coords_pred = coords
         normalized_probabilities = raw_probabilities / max_probabilities
 
-        loss = F.mse_loss(prob_pred, normalized_probabilities)
+        loss = F.mse_loss(prob_pred.squeeze(1), normalized_probabilities)
         
         return loss
 
@@ -110,13 +110,14 @@ class Light(pl.LightningModule):
         # Log metrics
 
         coords_pred = (coords_pred + 1) * 15.5
+        coords = batch.patch_level_target_coords
 
         metrics = {
             "train/loss": loss,
             "train/coords_loss": coords_loss,
             "train/rotation_loss": rotation_loss,
             "train/confidence_loss": confidence_loss,
-            "train/coords_mae": self.mae(coords_pred, coords),
+            "train/coords_mae": self.mae(coords_pred, coords.squeeze(1)),
         }
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
@@ -145,7 +146,7 @@ class Light(pl.LightningModule):
             "val/coords_loss": coords_loss,
             "val/rotation_loss": rotation_loss,
             "val/confidence_loss": confidence_loss,
-            "val/coords_mae": self.mae(coords_pred, coords),
+            "val/coords_mae": self.mae(coords_pred, coords.squeeze(1)),
         }
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
@@ -174,7 +175,7 @@ class Light(pl.LightningModule):
             "test/coords_loss": coords_loss,
             "test/rotation_loss": rotation_loss,
             "test/confidence_loss": confidence_loss,
-            "test/coords_mae": self.mae(coords_pred, coords),
+            "test/coords_mae": self.mae(coords_pred, coords.squeeze(1)),
         }
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
