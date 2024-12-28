@@ -60,7 +60,7 @@ def show_batch(
     
     rotations_true = rotations_true.clone().detach()
     # Convert radians to degrees
-    # rotations_true = rotations_true * (180 / torch.pi) 
+    rotations_true = rotations_true * (180 / torch.pi) 
 
     # print(rotations_true[:num_patches])
 
@@ -68,7 +68,8 @@ def show_batch(
         rotations = rotations.clone().detach()
         # Convert [-1, 1] to [-pi, pi]
         rotations = rotations * torch.pi 
-        # rotations = rotations * (180 / torch.pi) 
+        # Convert radians to degrees
+        rotations = rotations * (180 / torch.pi) 
 
     try:
         font = ImageFont.truetype("arial.ttf", 20) 

@@ -13,9 +13,9 @@ task:
             - MOO01_hand_puncher_1  #  1218
             - MGO06_inspect_hard  #  1279
             - MOO14_flickering_light  #  1422
-            
-            # - MGO04_hand_shooter_hard  #  1474
-            # - MGO13_sudden_movements  #  1491
+            - MGO04_hand_shooter_hard  #  1474
+            - MGO13_sudden_movements  #  1491
+
             # - MOO04_hand_shooter_hard  #  1563
             # - MGO02_hand_puncher  #  1624
             # - MOO02_hand_puncher_2  #  1844
@@ -35,8 +35,9 @@ task:
             - MOO08_mapping_hard #  203
             - MGO08_mapping_hard #  221
             - MGO07_mapping_easy #  293
-            # - MOO05_inspect_easy #  371
-            # - MGO05_inspect_easy #  530
+            - MOO05_inspect_easy #  371
+            - MGO05_inspect_easy #  530
+
             # - MGO14_flickering_light #  810
             # - MOO03_hand_shooter_easy #  950
             # - MGO03_hand_shooter_easy #  1055

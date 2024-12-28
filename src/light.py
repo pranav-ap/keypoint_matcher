@@ -86,7 +86,7 @@ class Light(pl.LightningModule):
         max_probabilities = torch.exp(gaussian.log_prob(coords))
 
         # Normalize probabilities to make p = 1 when coords_pred = coords
-        normalized_probabilities = raw_probabilities / (max_probabilities + 0.00001)
+        normalized_probabilities = raw_probabilities / (max_probabilities + 0.000001)
 
         loss = F.mse_loss(prob_pred.squeeze(1), normalized_probabilities)
         

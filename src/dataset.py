@@ -459,7 +459,7 @@ class MatchesDataModule(L.LightningDataModule):
         return torch.utils.data.DataLoader(
             self.dataset['val'],
             batch_size=config.train.val_batch_size,
-            shuffle=True,
+            shuffle=False,
             num_workers=self.num_workers,
             persistent_workers=self.persistent_workers,
             pin_memory=True,
