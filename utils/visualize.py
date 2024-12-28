@@ -49,6 +49,7 @@ def show_batch(
 
     patch_level_target_coords, patch_level_target_coords_true, 
     rotations_true, rotations=None, 
+    confidence_pred=None,
     limit_count=None, border_size=2, border_color="white", n_columns=2
     ):
     assert limit_count is None or limit_count > 0
@@ -58,18 +59,21 @@ def show_batch(
         num_patches = min(limit_count, num_patches)
     
     rotations_true = rotations_true.clone().detach()
-    rotations_true = rotations_true * (180 / torch.pi) # Convert radians to degrees
+    # Convert radians to degrees
+    # rotations_true = rotations_true * (180 / torch.pi) 
 
     # print(rotations_true[:num_patches])
 
     if rotations is not None:
         rotations = rotations.clone().detach()
-        rotations = rotations * 180  # Convert [-1, 1] to [-180, 180]
+        # Convert [-1, 1] to [-pi, pi]
+        rotations = rotations * torch.pi 
+        # rotations = rotations * (180 / torch.pi) 
 
     try:
-        font = ImageFont.truetype("arial.ttf", 20)  # Use Arial font, size 18
+        font = ImageFont.truetype("arial.ttf", 20) 
     except IOError:
-        font = ImageFont.load_default()  # Fallback to default font if Arial is not available
+        font = ImageFont.load_default() 
 
     patch_size = 128
     extra_col_gap = 0
@@ -127,6 +131,8 @@ def show_batch(
         rotation_true = rotations_true[i].item()
         rotation = f"{rotations[i].item():.2f}°" if rotations is not None else '-'
 
+        conf = f"{confidence_pred[i].item():.2f}" if confidence_pred is not None else '-'
+
         row = i // n_columns
         col = i % n_columns
 
@@ -144,8 +150,8 @@ def show_batch(
         text_y = y + patch_size + 2 * border_size + 10  
         draw.text((text_x, text_y), f"{rotation_true:.2f}°", fill="black", anchor="mm", font=font)
 
-        text_x = x2 + patch_size // 2
+        text_x = x2 - 5 + patch_size // 2
         text_y = y + patch_size + 2 * border_size + 10  
-        draw.text((text_x, text_y), f"{rotation}", fill="black", anchor="mm", font=font)
+        draw.text((text_x, text_y), f"{rotation}, {conf}", fill="black", anchor="mm", font=font)
 
     return combined_image

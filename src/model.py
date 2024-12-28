@@ -83,25 +83,36 @@ class MatcherModel(nn.Module):
         )
         
         self.rotation_head = nn.Sequential(
-            nn.Linear(64, 1),
+            nn.Linear(64, 32),
+            nn.BatchNorm1d(32),
+            nn.ReLU(),
+            nn.Linear(32, 1),
             nn.Tanh(),
         )
         
         self.confidence_head = nn.Sequential(
-            nn.Linear(64, 1),
+            nn.Linear(64, 32),
+            nn.BatchNorm1d(32),
+            nn.ReLU(),
+            nn.Linear(32, 1),
+            nn.Sigmoid(),
         )
 
-    def forward(self, reference_patches, target_patches, reference_coords):
+    def forward(self, 
+                reference_patches, 
+                target_patches, 
+                reference_coords, 
+                ):
         reference_coords = reference_coords / 31.0
         height, width = reference_patches.shape[2], reference_patches.shape[3]
         reference_coords = reference_coords.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, height, width)
-        
+
         combined = torch.cat([reference_patches, target_patches, reference_coords], dim=1)
         x = self.feature_extractor(combined)
-        x = x.to('cuda')
-        x = x + self.positional_encoding
+        # x = x.to('cuda')
+        x = x + self.positional_encoding.clone()
         x = self.model(x)
-        x = x.to('cuda')
+        # x = x.to('cuda')
 
         coords = self.coords_head(x)
         rotation = self.rotation_head(x)

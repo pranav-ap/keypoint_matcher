@@ -108,6 +108,8 @@ class MatchesDataset(torch.utils.data.Dataset):
 
                     names.append((video, cam, pair_name))
 
+        # print(names)
+
         return names
 
     def __len__(self):
@@ -420,7 +422,6 @@ class MatchesDataModule(L.LightningDataModule):
 
                 patch_normalize=self.patch_normalize,
                 image_augmentation_no_kp=self.image_augmentation_no_kp,
-                # image_augmentation_kp=self.image_augmentation_kp,
             )
 
             self.dataset['val'] = MatchesDataset(
@@ -458,7 +459,7 @@ class MatchesDataModule(L.LightningDataModule):
         return torch.utils.data.DataLoader(
             self.dataset['val'],
             batch_size=config.train.val_batch_size,
-            shuffle=False,
+            shuffle=True,
             num_workers=self.num_workers,
             persistent_workers=self.persistent_workers,
             pin_memory=True,
