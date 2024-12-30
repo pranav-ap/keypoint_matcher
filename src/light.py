@@ -104,8 +104,8 @@ class Light(pl.LightningModule):
         coords = batch.patch_level_target_coords
         coords_loss = self._compute_coords_loss(coords_pred, coords)
 
-        rotation = batch.rotations
-        rotation_loss = self._compute_rotation_loss(rotation_pred, rotation)
+        # rotation = batch.rotations
+        rotation_loss = 0 # self._compute_rotation_loss(rotation_pred, rotation)
 
         prob_loss = self._compute_confidence_loss(prob_pred, coords_pred, coords)
 
@@ -116,7 +116,7 @@ class Light(pl.LightningModule):
 
         # Calc Loss
 
-        loss = coords_loss + rotation_loss + confidence_loss
+        loss = coords_loss  + confidence_loss # + rotation_loss
 
         # Log metrics
 
@@ -145,7 +145,7 @@ class Light(pl.LightningModule):
 
         # Calc Loss
 
-        loss = coords_loss + rotation_loss + confidence_loss
+        loss = coords_loss + confidence_loss # + rotation_loss 
 
         # Log metrics
 
@@ -174,7 +174,7 @@ class Light(pl.LightningModule):
 
         # Calc Loss
 
-        loss = coords_loss + rotation_loss + confidence_loss
+        loss = coords_loss + confidence_loss # + rotation_loss 
 
         # Log metrics
 

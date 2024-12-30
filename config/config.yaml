@@ -15,11 +15,10 @@ task:
             - MOO14_flickering_light  #  1422
             - MGO04_hand_shooter_hard  #  1474
             - MGO13_sudden_movements  #  1491
-
-            # - MOO04_hand_shooter_hard  #  1563
-            # - MGO02_hand_puncher  #  1624
-            # - MOO02_hand_puncher_2  #  1844
-            # - MOO13_sudden_movements  #  2093
+            - MOO04_hand_shooter_hard  #  1563
+            - MGO02_hand_puncher  #  1624
+            - MOO02_hand_puncher_2  #  1844
+            - MOO13_sudden_movements  #  2093
 
         val:
             # Count : 4886
@@ -37,10 +36,9 @@ task:
             - MGO07_mapping_easy #  293
             - MOO05_inspect_easy #  371
             - MGO05_inspect_easy #  530
-
-            # - MGO14_flickering_light #  810
-            # - MOO03_hand_shooter_easy #  950
-            # - MGO03_hand_shooter_easy #  1055
+            - MGO14_flickering_light #  810
+            - MOO03_hand_shooter_easy #  950
+            - MGO03_hand_shooter_easy #  1055
 
         test:
             - Nothing
@@ -89,7 +87,7 @@ train:
     overfit_batches: 0
 
     patience: 5
-    max_epochs: 20 # 200
+    max_epochs: 100 # 200
     check_val_every_n_epoch: 2
     num_sanity_val_steps: 1
     log_every_n_steps: 50
