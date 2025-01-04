@@ -101,9 +101,15 @@ class MatchesDataset(torch.utils.data.Dataset):
 
                 logger.info(f'Image Pair Counts : {video} {cam} : {len(references.items())}')
 
+                if len(references.items()) == 0:
+                    continue
+
                 for a, b in zip(references.items(), targets.items()):
                     (pair_name, ref_dataset), (_, tar_dataset) = a, b
                     if not isinstance(ref_dataset, h5py.Dataset) or not isinstance(tar_dataset, h5py.Dataset):
+                        continue
+                    
+                    if len(ref_dataset[()]) == 0:
                         continue
 
                     names.append((video, cam, pair_name))

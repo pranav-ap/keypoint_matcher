@@ -87,7 +87,7 @@ train:
     overfit_batches: 0
 
     patience: 5
-    max_epochs: 100 # 200
+    max_epochs: 200
     check_val_every_n_epoch: 2
     num_sanity_val_steps: 1
     log_every_n_steps: 50

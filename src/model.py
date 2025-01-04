@@ -70,30 +70,44 @@ class MatcherModel(nn.Module):
             nn.BatchNorm1d(128),
             nn.ReLU(),
             nn.Dropout(0.2),
+        )
 
+        self.coords_head = nn.Sequential(
             nn.Linear(128, 64),
             nn.BatchNorm1d(64),
             nn.ReLU(),
             nn.Dropout(0.2),
-        )
 
-        self.coords_head = nn.Sequential(
-            nn.Linear(64, 2),
+            nn.Linear(64, 32),
+            nn.BatchNorm1d(32),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+
+            nn.Linear(32, 2),
             nn.Tanh(),
         )
         
         self.rotation_head = nn.Sequential(
-            nn.Linear(64, 32),
-            nn.BatchNorm1d(32),
+            nn.Linear(128, 64),
+            nn.BatchNorm1d(64),
             nn.ReLU(),
-            nn.Linear(32, 1),
+            nn.Dropout(0.2),
+            
+            nn.Linear(64, 1),
             nn.Tanh(),
         )
         
         self.confidence_head = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+
             nn.Linear(64, 32),
             nn.BatchNorm1d(32),
             nn.ReLU(),
+            nn.Dropout(0.2),
+
             nn.Linear(32, 1),
             nn.Sigmoid(),
         )
