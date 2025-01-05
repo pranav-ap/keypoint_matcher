@@ -2,7 +2,7 @@ import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
 import torchmetrics
-from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint, TQDMProgressBar
+from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint, TQDMProgressBar, ModelSummary
 from neptune.types import File
 
 from config import config
@@ -275,9 +275,12 @@ class Light(pl.LightningModule):
         progress_bar_callback = TQDMProgressBar(refresh_rate=5)
         lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
 
+        summary_callback = ModelSummary(max_depth=1)
+
         return [
             early_stop_callback,
             checkpoint_callback,
             progress_bar_callback,
-            lr_monitor_callback
+            lr_monitor_callback,
+            summary_callback,
         ]

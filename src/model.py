@@ -18,7 +18,7 @@ def positionalencoding2d(d_model, height, width):
     if d_model % 4 != 0:
         raise ValueError(f"Cannot use sin/cos positional encoding with odd dimension (got dim={d_model})")
     
-    pe = torch.zeros(d_model, height, width)
+    pe = torch.zeros(d_model, height, width, requires_grad=False)
     
     # Each dimension use half of d_model
     d_model = int(d_model / 2)
@@ -40,33 +40,50 @@ class MatcherModel(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.positional_encoding = positionalencoding2d(128, height=32, width=32).unsqueeze(0).to('cuda')
+        self.positional_encoding = positionalencoding2d(64, height=32, width=32).unsqueeze(0).to('cuda')
 
         in_channels = 3 * 2 + 2
 
-        self.feature_extractor = nn.Sequential(
-            nn.Conv2d(in_channels, 32, kernel_size=3, stride=1, padding=1),
+        self.feature_extractor_ref = nn.Sequential(
+            nn.Conv2d(5, 32, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(32),
             nn.ReLU(),
-
-            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-
-            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(128),
+        )
+        
+        self.feature_extractor_tar = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(32),
             nn.ReLU(),
         )
 
         self.model = nn.Sequential(
-            nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+
+            # Depthwise Separable Convolution
+            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1, groups=128),  # Depthwise
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.Conv2d(128, 256, kernel_size=1, stride=1),  # Pointwise
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            
+            # Depthwise Separable Convolution
+            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1, groups=256),  # Depthwise
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.Conv2d(256, 512, kernel_size=1, stride=1),  # Pointwise
+            nn.BatchNorm2d(512),
+            nn.ReLU(),
+            
+            nn.Conv2d(512, 256, kernel_size=1, stride=1),
             nn.BatchNorm2d(256),
             nn.ReLU(),
 
             # b, c, h, w
             nn.AdaptiveMaxPool2d((1, 1)),
             # b, c, 1, 1 
-
             nn.Flatten(),
             # b, c
 
@@ -90,31 +107,6 @@ class MatcherModel(nn.Module):
             nn.Linear(32, 2),
             nn.Tanh(),
         )
-        
-        # self.rotation_head = nn.Sequential(
-        #     nn.Linear(128, 64),
-        #     nn.BatchNorm1d(64),
-        #     nn.ReLU(),
-        #     nn.Dropout(0.2),
-            
-        #     nn.Linear(64, 1),
-        #     nn.Tanh(),
-        # )
-        
-        # self.confidence_head = nn.Sequential(
-        #     nn.Linear(128, 64),
-        #     nn.BatchNorm1d(64),
-        #     nn.ReLU(),
-        #     nn.Dropout(0.2),
-
-        #     nn.Linear(64, 32),
-        #     nn.BatchNorm1d(32),
-        #     nn.ReLU(),
-        #     nn.Dropout(0.2),
-
-        #     nn.Linear(32, 1),
-        #     nn.Sigmoid(),
-        # )
 
     def forward(self, 
                 reference_patches, 
@@ -125,15 +117,16 @@ class MatcherModel(nn.Module):
         height, width = reference_patches.shape[2], reference_patches.shape[3]
         reference_coords = reference_coords.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, height, width)
 
-        combined = torch.cat([reference_patches, target_patches, reference_coords], dim=1)
-        x = self.feature_extractor(combined)
+        combined = torch.cat([reference_patches, reference_coords], dim=1)
+        a = self.feature_extractor_ref(combined) 
+        b = self.feature_extractor_tar(target_patches)
+        x = torch.cat([a, b], dim=1)
         # x = x.to('cuda')
-        x = x + self.positional_encoding.clone()
+
+        x = x + self.positional_encoding #.clone()
         x = self.model(x)
         # x = x.to('cuda')
 
         coords = self.coords_head(x)
-        # rotation = self.rotation_head(x)
-        # confidence = self.confidence_head(x)
-
-        return coords # , confidence
+        
+        return coords

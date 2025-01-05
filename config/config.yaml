@@ -65,7 +65,7 @@ task:
 
 experiment:
     model: smallnet
-    name: ${experiment.model}_only_coords_no_dropout
+    name: ${experiment.model}_depthwise
 
 paths:
     roots:

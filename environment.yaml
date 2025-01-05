@@ -21,8 +21,10 @@ dependencies:
     - lightning
     - diffusers
     - neptune
+    - torchinfo
     - pip:
         - albumentations
         - opencv-python
         - tensorboard
+        - grad-cam
         
