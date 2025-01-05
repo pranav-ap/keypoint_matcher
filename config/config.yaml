@@ -6,39 +6,52 @@ task:
     video: MOO09_short_1_updown
     videos:
         train:
-            # Count : 16216
+            normal:
+                # Count : 16216
 
-            - MGO01_low_light  #  1097
-            - MOO06_inspect_hard  #  1111
-            - MOO01_hand_puncher_1  #  1218
-            - MGO06_inspect_hard  #  1279
-            - MOO14_flickering_light  #  1422
-            - MGO04_hand_shooter_hard  #  1474
-            - MGO13_sudden_movements  #  1491
-            - MOO04_hand_shooter_hard  #  1563
-            - MGO02_hand_puncher  #  1624
-            - MOO02_hand_puncher_2  #  1844
-            - MOO13_sudden_movements  #  2093
+                - MGO01_low_light  #  1097
+                - MOO06_inspect_hard  #  1111
+                - MOO01_hand_puncher_1  #  1218
+                - MGO06_inspect_hard  #  1279
+                - MOO14_flickering_light  #  1422
+                - MGO04_hand_shooter_hard  #  1474
+                - MGO13_sudden_movements  #  1491
+                - MOO04_hand_shooter_hard  #  1563
+                - MGO02_hand_puncher  #  1624
+                - MOO02_hand_puncher_2  #  1844
+                - MOO13_sudden_movements  #  2093
+
+            all: 
+                - MOO07_mapping_easy
+                # - MOO08_mapping_hard  # groups are broken ?
+                - MGO07_mapping_easy 
+                - MGO08_mapping_hard
 
         val:
-            # Count : 4886
+            normal:
+                # Count : 4886
 
-            # - MOO09_short_1_updown #  12
-            # - MGO09_short_1_updown #  15
-            # - MGO10_short_2_panorama #  42
-            # - MOO10_short_2_panorama #  42
-            # - MGO11_short_3_backandforth #  82
-            # - MOO11_short_3_backandforth #  82
+                # - MOO09_short_1_updown #  12
+                # - MGO09_short_1_updown #  15
+                # - MGO10_short_2_panorama #  42
+                # - MOO10_short_2_panorama #  42
+                # - MGO11_short_3_backandforth #  82
+                # - MOO11_short_3_backandforth #  82
 
-            - MOO07_mapping_easy #  178
-            - MOO08_mapping_hard #  203
-            - MGO08_mapping_hard #  221
-            - MGO07_mapping_easy #  293
-            - MOO05_inspect_easy #  371
-            - MGO05_inspect_easy #  530
-            - MGO14_flickering_light #  810
-            - MOO03_hand_shooter_easy #  950
-            - MGO03_hand_shooter_easy #  1055
+                - MOO07_mapping_easy #  178
+                - MOO08_mapping_hard #  203
+                - MGO08_mapping_hard #  221
+                - MGO07_mapping_easy #  293
+                - MOO05_inspect_easy #  371
+                - MGO05_inspect_easy #  530
+                - MGO14_flickering_light #  810
+                - MOO03_hand_shooter_easy #  950
+                - MGO03_hand_shooter_easy #  1055
+
+            all: 
+                - MOO09_short_1_updown
+                - MOO10_short_2_panorama
+                - MOO11_short_3_backandforth
 
         test:
             - Nothing
@@ -51,8 +64,8 @@ task:
     eda_mode: False  # True False
 
 experiment:
-    model: smallnet  # resnet mobilenet
-    name: ${experiment.model}
+    model: smallnet
+    name: ${experiment.model}_only_coords_no_dropout
 
 paths:
     roots:
@@ -69,7 +82,10 @@ paths:
         val_images: ${paths.roots.output}/images/val
         test_images: ${paths.roots.output}/images/test
 
-    matches: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output_normal/train/train_data.hdf5
+    matches: 
+        all: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_all/train/train_data.hdf5
+        normal: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_normal/train/train_data.hdf5
+
     images: ${paths.roots.mav}/${task.cam}/data
 
 image:

@@ -69,7 +69,7 @@ class Light(pl.LightningModule):
 
     @staticmethod
     def _compute_confidence_loss(prob_pred, coords_pred, coords):
-        std_dev = 3.0
+        std_dev = 1.0
         covariance_matrix = torch.diag(torch.tensor([std_dev ** 2, std_dev ** 2], device=coords.device))
 
         gaussian = torch.distributions.MultivariateNormal(
@@ -93,7 +93,7 @@ class Light(pl.LightningModule):
         return loss
 
     def _shared_step(self, batch: Match):
-        coords_pred, rotation_pred, prob_pred = self.model(
+        coords_pred = self.model(
             batch.reference_patches,
             batch.target_patches,
             batch.patch_level_reference_coords,
@@ -105,18 +105,18 @@ class Light(pl.LightningModule):
         coords_loss = self._compute_coords_loss(coords_pred, coords)
 
         # rotation = batch.rotations
-        rotation_loss = 0 # self._compute_rotation_loss(rotation_pred, rotation)
+        # rotation_loss = 0 # self._compute_rotation_loss(rotation_pred, rotation)
 
-        prob_loss = self._compute_confidence_loss(prob_pred, coords_pred, coords)
+        # conf_loss = self._compute_confidence_loss(conf_pred, coords_pred, coords)
 
-        return coords_loss, rotation_loss, prob_loss, coords_pred, rotation_pred, prob_pred
+        return coords_loss, coords_pred
 
     def training_step(self, batch: Match, batch_idx):
-        coords_loss, rotation_loss, confidence_loss, coords_pred, rotation_pred, confidence_pred = self._shared_step(batch)
+        coords_loss, coords_pred = self._shared_step(batch)
 
         # Calc Loss
 
-        loss = coords_loss  + confidence_loss # + rotation_loss
+        loss = coords_loss  # + confidence_loss + rotation_loss
 
         # Log metrics
 
@@ -126,8 +126,8 @@ class Light(pl.LightningModule):
         metrics = {
             "train/loss": loss,
             "train/coords_loss": coords_loss,
-            "train/rotation_loss": rotation_loss,
-            "train/confidence_loss": confidence_loss,
+            # "train/rotation_loss": rotation_loss,
+            # "train/confidence_loss": confidence_loss,
             "train/coords_mae": self.mae(coords_pred, coords.squeeze(1)),
         }
 
@@ -135,17 +135,17 @@ class Light(pl.LightningModule):
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(batch, coords_pred, rotation_pred, confidence_pred, limit_count=limit_count, stage='train')
+            self._log_images(batch, coords_pred, limit_count=limit_count, stage='train')
 
         return loss
 
     @torch.no_grad()
     def validation_step(self, batch: Match, batch_idx):
-        coords_loss, rotation_loss, confidence_loss, coords_pred, rotation_pred, confidence_pred = self._shared_step(batch)
+        coords_loss, coords_pred = self._shared_step(batch)
 
         # Calc Loss
 
-        loss = coords_loss + confidence_loss # + rotation_loss 
+        loss = coords_loss # + confidence_loss # + rotation_loss 
 
         # Log metrics
 
@@ -155,8 +155,8 @@ class Light(pl.LightningModule):
         metrics = {
             "val/loss": loss,
             "val/coords_loss": coords_loss,
-            "val/rotation_loss": rotation_loss,
-            "val/confidence_loss": confidence_loss,
+            # "val/rotation_loss": rotation_loss,
+            # "val/confidence_loss": confidence_loss,
             "val/coords_mae": self.mae(coords_pred, coords.squeeze(1)),
         }
 
@@ -164,13 +164,13 @@ class Light(pl.LightningModule):
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(batch, coords_pred, rotation_pred, confidence_pred, limit_count=limit_count, stage='val')
+            self._log_images(batch, coords_pred, limit_count=limit_count, stage='val')
 
         return metrics
 
     @torch.no_grad()
     def test_step(self, batch: Match, batch_idx):
-        coords_loss, rotation_loss, confidence_loss, coords_pred, rotation_pred, confidence_pred = self._shared_step(batch)
+        coords_loss, confidence_loss, coords_pred, confidence_pred = self._shared_step(batch)
 
         # Calc Loss
 
@@ -184,7 +184,7 @@ class Light(pl.LightningModule):
         metrics = {
             "test/loss": loss,
             "test/coords_loss": coords_loss,
-            "test/rotation_loss": rotation_loss,
+            # "test/rotation_loss": rotation_loss,
             "test/confidence_loss": confidence_loss,
             "test/coords_mae": self.mae(coords_pred, coords.squeeze(1)),
         }
@@ -193,18 +193,18 @@ class Light(pl.LightningModule):
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(batch, coords_pred, rotation_pred, confidence_pred, limit_count=limit_count, stage='test')
+            self._log_images(batch, coords_pred, confidence_pred, limit_count=limit_count, stage='test')
 
         return metrics
 
-    def _log_images(self, batch, target_coords, rotation_pred, confidence_pred, limit_count=None, stage=None):
+    def _log_images(self, batch, target_coords, limit_count=None, stage=None):
         image_grid = show_batch(
             batch.reference_patches, batch.target_patches,
             batch.patch_level_reference_coords, 
             target_coords, batch.patch_level_target_coords,
-            rotations_true=batch.rotations,
-            rotations=rotation_pred,
-            confidence_pred=confidence_pred,
+            # rotations_true=batch.rotations,
+            # rotations=rotation_pred,
+            # confidence_pred=confidence_pred,
             limit_count=limit_count,
             n_columns=8,
         )
@@ -247,8 +247,6 @@ class Light(pl.LightningModule):
             "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(
                 optimizer,
                 mode='min',
-                patience=2,
-                factor=0.5
             ),
             "monitor": "train/loss",
             "interval": "epoch",
@@ -274,7 +272,7 @@ class Light(pl.LightningModule):
             save_last=True,
         )
 
-        progress_bar_callback = TQDMProgressBar(refresh_rate=2)
+        progress_bar_callback = TQDMProgressBar(refresh_rate=5)
         lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
 
         return [

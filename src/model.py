@@ -45,7 +45,11 @@ class MatcherModel(nn.Module):
         in_channels = 3 * 2 + 2
 
         self.feature_extractor = nn.Sequential(
-            nn.Conv2d(in_channels, 64, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(in_channels, 32, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(),
 
@@ -61,7 +65,7 @@ class MatcherModel(nn.Module):
 
             # b, c, h, w
             nn.AdaptiveMaxPool2d((1, 1)),
-            # b, c, 1, 1
+            # b, c, 1, 1 
 
             nn.Flatten(),
             # b, c
@@ -69,48 +73,48 @@ class MatcherModel(nn.Module):
             nn.Linear(256, 128),
             nn.BatchNorm1d(128),
             nn.ReLU(),
-            nn.Dropout(0.2),
+            # nn.Dropout(0.2),
         )
 
         self.coords_head = nn.Sequential(
             nn.Linear(128, 64),
             nn.BatchNorm1d(64),
             nn.ReLU(),
-            nn.Dropout(0.2),
+            # nn.Dropout(0.2),
 
             nn.Linear(64, 32),
             nn.BatchNorm1d(32),
             nn.ReLU(),
-            nn.Dropout(0.2),
+            # nn.Dropout(0.2),
 
             nn.Linear(32, 2),
             nn.Tanh(),
         )
         
-        self.rotation_head = nn.Sequential(
-            nn.Linear(128, 64),
-            nn.BatchNorm1d(64),
-            nn.ReLU(),
-            nn.Dropout(0.2),
+        # self.rotation_head = nn.Sequential(
+        #     nn.Linear(128, 64),
+        #     nn.BatchNorm1d(64),
+        #     nn.ReLU(),
+        #     nn.Dropout(0.2),
             
-            nn.Linear(64, 1),
-            nn.Tanh(),
-        )
+        #     nn.Linear(64, 1),
+        #     nn.Tanh(),
+        # )
         
-        self.confidence_head = nn.Sequential(
-            nn.Linear(128, 64),
-            nn.BatchNorm1d(64),
-            nn.ReLU(),
-            nn.Dropout(0.2),
+        # self.confidence_head = nn.Sequential(
+        #     nn.Linear(128, 64),
+        #     nn.BatchNorm1d(64),
+        #     nn.ReLU(),
+        #     nn.Dropout(0.2),
 
-            nn.Linear(64, 32),
-            nn.BatchNorm1d(32),
-            nn.ReLU(),
-            nn.Dropout(0.2),
+        #     nn.Linear(64, 32),
+        #     nn.BatchNorm1d(32),
+        #     nn.ReLU(),
+        #     nn.Dropout(0.2),
 
-            nn.Linear(32, 1),
-            nn.Sigmoid(),
-        )
+        #     nn.Linear(32, 1),
+        #     nn.Sigmoid(),
+        # )
 
     def forward(self, 
                 reference_patches, 
@@ -129,7 +133,7 @@ class MatcherModel(nn.Module):
         # x = x.to('cuda')
 
         coords = self.coords_head(x)
-        rotation = self.rotation_head(x)
-        confidence = self.confidence_head(x)
+        # rotation = self.rotation_head(x)
+        # confidence = self.confidence_head(x)
 
-        return coords, rotation, confidence
+        return coords # , confidence

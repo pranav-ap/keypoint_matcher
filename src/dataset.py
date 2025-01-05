@@ -40,7 +40,7 @@ class Match:
     reference_patches: Optional[torch.Tensor] = None
     target_patches: Optional[torch.Tensor] = None
 
-    rotations: Optional[torch.Tensor] = None
+    # rotations: Optional[torch.Tensor] = None
 
     patch_level_reference_coords: Optional[torch.Tensor] = None
     patch_level_target_coords: Optional[torch.Tensor] = None
@@ -50,7 +50,7 @@ def match_collate_fn(batch):
     reference_patches = torch.cat([match.reference_patches for match in batch], dim=0)
     target_patches = torch.cat([match.target_patches for match in batch], dim=0)
 
-    rotations = torch.cat([match.rotations for match in batch], dim=0)
+    # rotations = torch.cat([match.rotations for match in batch], dim=0)
 
     patch_level_reference_coords = torch.cat([match.patch_level_reference_coords for match in batch], dim=0)
     patch_level_target_coords = torch.cat([match.patch_level_target_coords for match in batch], dim=0)
@@ -59,7 +59,7 @@ def match_collate_fn(batch):
         reference_patches,
         target_patches,
 
-        rotations,
+        # rotations,
 
         patch_level_reference_coords,
         patch_level_target_coords,
@@ -84,45 +84,54 @@ class MatchesDataset(torch.utils.data.Dataset):
         self.names = []
 
     def _setup_file(self):
-        self._file = h5py.File(config.paths.matches, mode='r')
+        self._file_all = h5py.File(config.paths.matches.all, mode='r')
+        self._file_normal = h5py.File(config.paths.matches.normal, mode='r')
+
         self.names = self._get_names()
 
     def _get_names(self):
         names = []
+        ds_types = ['normal', 'all']
 
-        for video in config.task.videos[self.stage]:
-            config.task.video = video
+        logger.info(f'Processing {self.stage}')
 
-            for cam in config.task.cams:
-                config.task.cam = cam
+        for ds_type in ds_types:
+            f = self._file_all if ds_type == 'all' else self._file_normal
+            logger.info(f'Processing {ds_type}')
 
-                references = self._file[f'{video}/{cam}/reference_coords']
-                targets = self._file[f'{video}/{cam}/target_coords']
+            for video in config.task.videos[self.stage][ds_type]:
+                config.task.video = video
 
-                logger.info(f'Image Pair Counts : {video} {cam} : {len(references.items())}')
+                for cam in config.task.cams:
+                    config.task.cam = cam
 
-                if len(references.items()) == 0:
-                    continue
+                    references = f[f'{video}/{cam}/reference_coords']
+                    targets = f[f'{video}/{cam}/target_coords']
 
-                for a, b in zip(references.items(), targets.items()):
-                    (pair_name, ref_dataset), (_, tar_dataset) = a, b
-                    if not isinstance(ref_dataset, h5py.Dataset) or not isinstance(tar_dataset, h5py.Dataset):
+                    logger.info(f'Image Pair Counts : {video} {cam} : {len(references.items())}')
+
+                    if len(references.items()) == 0:
                         continue
-                    
-                    if len(ref_dataset[()]) == 0:
-                        continue
 
-                    names.append((video, cam, pair_name))
+                    for a, b in zip(references.items(), targets.items()):
+                        (pair_name, ref_dataset), (_, tar_dataset) = a, b
+                        if not isinstance(ref_dataset, h5py.Dataset) or not isinstance(tar_dataset, h5py.Dataset):
+                            continue
+                        
+                        if len(ref_dataset[()]) == 0:
+                            continue
+
+                        names.append((ds_type, video, cam, pair_name))
 
         # print(names)
 
         return names
 
     def __len__(self):
-        if not hasattr(self, '_file'):
+        if not hasattr(self, '_file_all'):
             self._setup_file()
 
-        assert hasattr(self, '_file')
+        assert hasattr(self, '_file_all')
 
         return len(self.names)
 
@@ -224,7 +233,7 @@ class MatchesDataset(torch.utils.data.Dataset):
 
             if self.patch_normalize:
                 patch = self.patch_normalize(patch)
-                # patch = min_max_normalize(patch, min_val=0.0, max_val=1.0) 
+                patch = min_max_normalize(patch, min_val=0.0, max_val=1.0) 
 
             patches.append(patch)
             patch_level_coords.append(keypoint)
@@ -311,7 +320,7 @@ class MatchesDataset(torch.utils.data.Dataset):
 
             if self.patch_normalize:
                 patch = self.patch_normalize(patch)
-                # patch = min_max_normalize(patch, min_val=0.0, max_val=1.0) 
+                patch = min_max_normalize(patch, min_val=0.0, max_val=1.0) 
 
             patches.append(patch)
             patch_level_coords.append(keypoint)
@@ -323,16 +332,18 @@ class MatchesDataset(torch.utils.data.Dataset):
 
     def _prepare_images(self, idx):
         name = self.names[idx]
-        video, cam, pair_name = name
+        ds_type, video, cam, pair_name = name
         reference_image_name, target_image_name = pair_name.split('_')
 
         config.task.video = video
         config.task.cam = cam
 
-        references_group = self._file[f'{config.task.video}/{config.task.cam}/reference_coords']
-        targets_group = self._file[f'{config.task.video}/{config.task.cam}/target_coords']
+        f = self._file_all if ds_type == 'all' else self._file_normal
 
-        indices_group = self._file[f'{config.task.video}/{config.task.cam}/indices']
+        references_group = f[f'{config.task.video}/{config.task.cam}/reference_coords']
+        targets_group = f[f'{config.task.video}/{config.task.cam}/target_coords']
+
+        indices_group = f[f'{config.task.video}/{config.task.cam}/indices']
         indices = indices_group[pair_name][()].astype(np.int32)
         N = min(len(indices), config.train.num_patches_per_image)
         assert N != 0
@@ -355,19 +366,19 @@ class MatchesDataset(torch.utils.data.Dataset):
             idx
         )
 
-        rotations_group = self._file[f'{config.task.video}/{config.task.cam}/rotations']
-        rotations = rotations_group[pair_name][()][indices].astype(np.float32)
-        rotations = torch.tensor(rotations, dtype=torch.float32)
+        # rotations_group = f[f'{config.task.video}/{config.task.cam}/rotations']
+        # rotations = rotations_group[pair_name][()][indices].astype(np.float32)
+        # rotations = torch.tensor(rotations, dtype=torch.float32)
 
-        return references, targets, rotations
+        return references, targets # , rotations
 
     def __getitem__(self, idx):
-        if not hasattr(self, '_file'):
+        if not hasattr(self, '_file_all'):
             self._setup_file()
 
-        assert hasattr(self, '_file')
+        assert hasattr(self, '_file_all')
 
-        references, targets, rotations = self._prepare_images(idx)
+        references, targets = self._prepare_images(idx)
         reference_patches, patch_level_reference_coords = references
         target_patches, patch_level_target_coords = targets
 
@@ -375,7 +386,7 @@ class MatchesDataset(torch.utils.data.Dataset):
             reference_patches,
             target_patches, 
             
-            rotations,
+            # rotations,
 
             patch_level_reference_coords,
             patch_level_target_coords,
@@ -393,32 +404,20 @@ class MatchesDataModule(L.LightningDataModule):
 
         self.image_augmentation_no_kp = A.Compose(
             transforms=[
-                A.Defocus(p=0.5, radius=2),
-                # A.GaussNoise(p=1, var_limit=0.01),
+                A.Defocus(p=0.5, radius=1),
+                # A.GaussNoise(p=1, var_limit=0.001),
             ]
         )
 
         self.patch_normalize = T.Compose([
             T.ToTensor(),
-            T.Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225]
-            ),
+            # T.Normalize(
+            #     mean=[0.485, 0.456, 0.406],
+            #     std=[0.229, 0.224, 0.225]
+            # ),
         ])
 
         self.dataset: Dict[str, MatchesDataset] = {}
-        self._file = None
-
-    def _open_file(self):
-        if self._file is not None:
-            return
-
-        self._file = h5py.File(config.paths.matches, mode='r')
-
-    def _close_file(self):
-        if self._file is not None:
-            self._file.close()
-            self._file = None
     
     def setup(self, stage=None):
         if stage == "fit":
@@ -446,9 +445,6 @@ class MatchesDataModule(L.LightningDataModule):
             )
 
             logger.info(f"Test Dataset  : {len(self.dataset['test'])} samples")
-
-    def teardown(self, stage=None):
-        self._close_file()
 
     def train_dataloader(self):
         return torch.utils.data.DataLoader(
