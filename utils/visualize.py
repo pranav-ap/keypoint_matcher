@@ -64,7 +64,7 @@ def show_batch(
         # Convert radians to degrees
         rotations_true = rotations_true * (180 / torch.pi) 
 
-    print(rotations_true[:num_patches])
+    # print(rotations_true[:num_patches])
 
     if rotations is not None:
         rotations = rotations.clone().detach()
@@ -134,10 +134,10 @@ def show_batch(
         a, b = patch_level_target_coords_true[i]
         target_patch = prepare_target_patch(target_patch, x, y, a, b)
 
-        rotation_true = rotations_true[i].item()
-        rotation = f"{rotations[i].item():.2f}°" if rotations is not None else '-'
+        # rotation_true = rotations_true[i].item()
+        # rotation = f"{rotations[i].item():.2f}°" if rotations is not None else '-'
 
-        conf = f"{confidence_pred[i].item():.2f}" if confidence_pred is not None else '-'
+        # conf = f"{confidence_pred[i].item():.2f}" if confidence_pred is not None else '-'
 
         row = i // n_columns
         col = i % n_columns
@@ -150,15 +150,15 @@ def show_batch(
         combined_image.paste(target_patch, (x2, y))
 
         # Draw rotation value below the patches
-        draw = ImageDraw.Draw(combined_image)
+        # draw = ImageDraw.Draw(combined_image)
 
-        text_x = x1 + patch_size // 2
-        text_y = y + patch_size + 2 * border_size + 10  
-        draw.text((text_x, text_y), f"{rotation_true:.2f}°", fill="black", anchor="mm", font=font)
+        # text_x = x1 + patch_size // 2
+        # text_y = y + patch_size + 2 * border_size + 10  
+        # draw.text((text_x, text_y), f"{rotation_true:.2f}°", fill="black", anchor="mm", font=font)
 
-        text_x = x2 - 5 + patch_size // 2
-        text_y = y + patch_size + 2 * border_size + 10  
-        draw.text((text_x, text_y), f"{rotation}, {conf}", fill="black", anchor="mm", font=font)
-        draw.text((text_x, text_y), f"{conf}", fill="black", anchor="mm", font=font)
+        # text_x = x2 - 5 + patch_size // 2
+        # text_y = y + patch_size + 2 * border_size + 10  
+        # draw.text((text_x, text_y), f"{rotation}, {conf}", fill="black", anchor="mm", font=font)
+        # draw.text((text_x, text_y), f"{conf}", fill="black", anchor="mm", font=font)
 
     return combined_image

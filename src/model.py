@@ -57,10 +57,14 @@ class MatcherModel(nn.Module):
         )
 
         self.model = nn.Sequential(
-            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+            # Depthwise Separable Convolution
+            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, groups=64),  # Depthwise
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.Conv2d(64, 128, kernel_size=1, stride=1),  # Pointwise
             nn.BatchNorm2d(128),
             nn.ReLU(),
-
+                        
             # Depthwise Separable Convolution
             nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1, groups=128),  # Depthwise
             nn.BatchNorm2d(128),
@@ -68,17 +72,13 @@ class MatcherModel(nn.Module):
             nn.Conv2d(128, 256, kernel_size=1, stride=1),  # Pointwise
             nn.BatchNorm2d(256),
             nn.ReLU(),
-            
+                        
             # Depthwise Separable Convolution
             nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1, groups=256),  # Depthwise
             nn.BatchNorm2d(256),
             nn.ReLU(),
             nn.Conv2d(256, 512, kernel_size=1, stride=1),  # Pointwise
             nn.BatchNorm2d(512),
-            nn.ReLU(),
-            
-            nn.Conv2d(512, 256, kernel_size=1, stride=1),
-            nn.BatchNorm2d(256),
             nn.ReLU(),
 
             # b, c, h, w
@@ -87,10 +87,10 @@ class MatcherModel(nn.Module):
             nn.Flatten(),
             # b, c
 
-            nn.Linear(256, 128),
+            nn.Linear(512, 128),
             nn.BatchNorm1d(128),
             nn.ReLU(),
-            # nn.Dropout(0.2),
+            nn.Dropout(0.2),
         )
 
         self.coords_head = nn.Sequential(
@@ -108,6 +108,21 @@ class MatcherModel(nn.Module):
             nn.Tanh(),
         )
 
+        self.confidence_head = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+            # nn.Dropout(0.2),
+
+            nn.Linear(64, 32),
+            nn.BatchNorm1d(32),
+            nn.ReLU(),
+            # nn.Dropout(0.2),
+
+            nn.Linear(32, 1),
+            nn.Sigmoid(),
+        )
+
     def forward(self, 
                 reference_patches, 
                 target_patches, 
@@ -123,10 +138,11 @@ class MatcherModel(nn.Module):
         x = torch.cat([a, b], dim=1)
         # x = x.to('cuda')
 
-        x = x + self.positional_encoding #.clone()
+        x = x + self.positional_encoding 
         x = self.model(x)
         # x = x.to('cuda')
 
         coords = self.coords_head(x)
+        confidence = self.confidence_head(x)
         
-        return coords
+        return coords, confidence

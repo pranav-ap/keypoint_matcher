@@ -68,7 +68,7 @@ class Light(pl.LightningModule):
         return loss
 
     @staticmethod
-    def _compute_confidence_loss(prob_pred, coords_pred, coords):
+    def _compute_confidence_loss(conf_pred, coords_pred, coords):
         std_dev = 1.0
         covariance_matrix = torch.diag(torch.tensor([std_dev ** 2, std_dev ** 2], device=coords.device))
 
@@ -88,12 +88,12 @@ class Light(pl.LightningModule):
         # Normalize probabilities to make p = 1 when coords_pred = coords
         normalized_probabilities = raw_probabilities / (max_probabilities + 0.000001)
 
-        loss = F.mse_loss(prob_pred.squeeze(1), normalized_probabilities)
+        loss = F.mse_loss(conf_pred.squeeze(1), normalized_probabilities)
         
         return loss
 
     def _shared_step(self, batch: Match):
-        coords_pred = self.model(
+        coords_pred, conf_pred = self.model(
             batch.reference_patches,
             batch.target_patches,
             batch.patch_level_reference_coords,
@@ -107,16 +107,16 @@ class Light(pl.LightningModule):
         # rotation = batch.rotations
         # rotation_loss = 0 # self._compute_rotation_loss(rotation_pred, rotation)
 
-        # conf_loss = self._compute_confidence_loss(conf_pred, coords_pred, coords)
+        conf_loss = self._compute_confidence_loss(conf_pred, coords_pred, coords)
 
-        return coords_loss, coords_pred
+        return coords_loss, coords_pred, conf_loss, conf_pred
 
     def training_step(self, batch: Match, batch_idx):
-        coords_loss, coords_pred = self._shared_step(batch)
+        coords_loss, coords_pred, conf_loss, conf_pred = self._shared_step(batch)
 
         # Calc Loss
 
-        loss = coords_loss  # + confidence_loss + rotation_loss
+        loss = coords_loss + conf_loss # + rotation_loss
 
         # Log metrics
 
@@ -127,7 +127,7 @@ class Light(pl.LightningModule):
             "train/loss": loss,
             "train/coords_loss": coords_loss,
             # "train/rotation_loss": rotation_loss,
-            # "train/confidence_loss": confidence_loss,
+            "train/confidence_loss": conf_loss,
             "train/coords_mae": self.mae(coords_pred, coords.squeeze(1)),
         }
 
@@ -135,18 +135,18 @@ class Light(pl.LightningModule):
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(batch, coords_pred, limit_count=limit_count, stage='train')
+            self._log_images(batch, coords_pred, confidence_pred=conf_pred, limit_count=limit_count, stage='train')
 
         return loss
 
     @torch.no_grad()
     def validation_step(self, batch: Match, batch_idx):
-        coords_loss, coords_pred = self._shared_step(batch)
+        coords_loss, coords_pred, conf_loss, conf_pred = self._shared_step(batch)
 
         # Calc Loss
 
-        loss = coords_loss # + confidence_loss # + rotation_loss 
-
+        loss = coords_loss + conf_loss # + rotation_loss
+        
         # Log metrics
 
         coords_pred = (coords_pred + 1) * 15.5
@@ -156,7 +156,7 @@ class Light(pl.LightningModule):
             "val/loss": loss,
             "val/coords_loss": coords_loss,
             # "val/rotation_loss": rotation_loss,
-            # "val/confidence_loss": confidence_loss,
+            "val/confidence_loss": conf_loss,
             "val/coords_mae": self.mae(coords_pred, coords.squeeze(1)),
         }
 
@@ -164,18 +164,18 @@ class Light(pl.LightningModule):
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(batch, coords_pred, limit_count=limit_count, stage='val')
+            self._log_images(batch, coords_pred, confidence_pred=conf_pred, limit_count=limit_count, stage='val')
 
         return metrics
 
     @torch.no_grad()
     def test_step(self, batch: Match, batch_idx):
-        coords_loss, confidence_loss, coords_pred, confidence_pred = self._shared_step(batch)
+        coords_loss, coords_pred, conf_loss, conf_pred = self._shared_step(batch)
 
         # Calc Loss
 
-        loss = coords_loss + confidence_loss # + rotation_loss 
-
+        loss = coords_loss + conf_loss # + rotation_loss
+        
         # Log metrics
 
         coords_pred = (coords_pred + 1) * 15.5
@@ -185,7 +185,7 @@ class Light(pl.LightningModule):
             "test/loss": loss,
             "test/coords_loss": coords_loss,
             # "test/rotation_loss": rotation_loss,
-            "test/confidence_loss": confidence_loss,
+            "test/confidence_loss": conf_loss,
             "test/coords_mae": self.mae(coords_pred, coords.squeeze(1)),
         }
 
@@ -193,18 +193,18 @@ class Light(pl.LightningModule):
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(batch, coords_pred, confidence_pred, limit_count=limit_count, stage='test')
+            self._log_images(batch, coords_pred, confidence_pred=conf_pred, limit_count=limit_count, stage='test')
 
         return metrics
 
-    def _log_images(self, batch, target_coords, limit_count=None, stage=None):
+    def _log_images(self, batch, target_coords, confidence_pred=None, limit_count=None, stage=None):
         image_grid = show_batch(
             batch.reference_patches, batch.target_patches,
             batch.patch_level_reference_coords, 
             target_coords, batch.patch_level_target_coords,
             # rotations_true=batch.rotations,
             # rotations=rotation_pred,
-            # confidence_pred=confidence_pred,
+            confidence_pred=confidence_pred,
             limit_count=limit_count,
             n_columns=8,
         )
