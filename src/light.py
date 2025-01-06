@@ -272,7 +272,7 @@ class Light(pl.LightningModule):
             save_last=True,
         )
 
-        progress_bar_callback = TQDMProgressBar(refresh_rate=5)
+        progress_bar_callback = TQDMProgressBar(refresh_rate=1000)
         lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
 
         summary_callback = ModelSummary(max_depth=1)

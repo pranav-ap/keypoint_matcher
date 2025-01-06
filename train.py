@@ -20,17 +20,17 @@ def train():
     if tensorboard_logger is not None:
         loggers.append(tensorboard_logger)
 
-    light = Light(
-        neptune_logger=neptune_logger,
-        tensorboard_logger=tensorboard_logger
-    )
-
-    # checkpoint_path = './output/checkpoints/best_checkpoint.ckpt'
+    # checkpoint_path = '/home/stud/ath/ath_ws/keypoint_matcher/output/smallnet_depthwise/checkpoints/last.ckpt'
     # light = Light.load_from_checkpoint(
     #     checkpoint_path,
     #     neptune_logger=neptune_logger,
     #     tensorboard_logger=tensorboard_logger,
     # )
+
+    light = Light(
+        neptune_logger=neptune_logger,
+        tensorboard_logger=tensorboard_logger
+    )
 
     dm = MatchesDataModule()
 

@@ -40,7 +40,7 @@ class Match:
     reference_patches: Optional[torch.Tensor] = None
     target_patches: Optional[torch.Tensor] = None
 
-    # rotations: Optional[torch.Tensor] = None
+    rotations: Optional[torch.Tensor] = None
 
     patch_level_reference_coords: Optional[torch.Tensor] = None
     patch_level_target_coords: Optional[torch.Tensor] = None
@@ -50,7 +50,7 @@ def match_collate_fn(batch):
     reference_patches = torch.cat([match.reference_patches for match in batch], dim=0)
     target_patches = torch.cat([match.target_patches for match in batch], dim=0)
 
-    # rotations = torch.cat([match.rotations for match in batch], dim=0)
+    rotations = torch.cat([match.rotations for match in batch], dim=0)
 
     patch_level_reference_coords = torch.cat([match.patch_level_reference_coords for match in batch], dim=0)
     patch_level_target_coords = torch.cat([match.patch_level_target_coords for match in batch], dim=0)
@@ -59,7 +59,7 @@ def match_collate_fn(batch):
         reference_patches,
         target_patches,
 
-        # rotations,
+        rotations,
 
         patch_level_reference_coords,
         patch_level_target_coords,
@@ -91,7 +91,7 @@ class MatchesDataset(torch.utils.data.Dataset):
 
     def _get_names(self):
         names = []
-        ds_types = ['normal', 'all']
+        ds_types = ['normal'] #, 'all']
 
         logger.info(f'Processing {self.stage}')
 
@@ -366,11 +366,11 @@ class MatchesDataset(torch.utils.data.Dataset):
             idx
         )
 
-        # rotations_group = f[f'{config.task.video}/{config.task.cam}/rotations']
-        # rotations = rotations_group[pair_name][()][indices].astype(np.float32)
-        # rotations = torch.tensor(rotations, dtype=torch.float32)
+        rotations_group = f[f'{config.task.video}/{config.task.cam}/rotations']
+        rotations = rotations_group[pair_name][()][indices].astype(np.float32)
+        rotations = torch.tensor(rotations, dtype=torch.float32)
 
-        return references, targets # , rotations
+        return references, targets, rotations
 
     def __getitem__(self, idx):
         if not hasattr(self, '_file_all'):
@@ -378,7 +378,7 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         assert hasattr(self, '_file_all')
 
-        references, targets = self._prepare_images(idx)
+        references, targets, rotations = self._prepare_images(idx)
         reference_patches, patch_level_reference_coords = references
         target_patches, patch_level_target_coords = targets
 
@@ -386,7 +386,7 @@ class MatchesDataset(torch.utils.data.Dataset):
             reference_patches,
             target_patches, 
             
-            # rotations,
+            rotations,
 
             patch_level_reference_coords,
             patch_level_target_coords,

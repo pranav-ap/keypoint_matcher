@@ -84,7 +84,7 @@ paths:
 
     matches: 
         all: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_all/train/train_data.hdf5
-        normal: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_normal/train/train_data.hdf5
+        normal: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_normal/train/train_data2.hdf5
 
     images: ${paths.roots.mav}/${task.cam}/data
 
@@ -102,11 +102,11 @@ train:
     fast_dev_run: False  # True False
     overfit_batches: 0
 
-    patience: 5
+    patience: 10
     max_epochs: 200
     check_val_every_n_epoch: 2
     num_sanity_val_steps: 1
-    log_every_n_steps: 50
+    log_every_n_steps: 100
     accumulate_grad_batches: 1
     learning_rate: 1e-4
 
