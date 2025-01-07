@@ -238,10 +238,16 @@ class Light(pl.LightningModule):
         #     )
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(
+        optimizer = torch.optim.SGD(
             self.model.parameters(),
-            lr=self.learning_rate
+            lr=self.learning_rate,
+            momentum=0.9,
         )
+
+        # optimizer = torch.optim.AdamW(
+        #     self.model.parameters(),
+        #     lr=self.learning_rate
+        # )
 
         lr_scheduler = {
             "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(

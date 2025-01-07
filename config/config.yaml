@@ -23,7 +23,7 @@ task:
 
             all: 
                 - MOO07_mapping_easy
-                # - MOO08_mapping_hard  # groups are broken ?
+                # - MOO08_mapping_hard  # groups are broken ? runing now. next run rotate for it
                 - MGO07_mapping_easy 
                 - MGO08_mapping_hard
 
@@ -64,8 +64,8 @@ task:
     eda_mode: False  # True False
 
 experiment:
-    model: smallnet
-    name: ${experiment.model}_depthwise_300k
+    model: bignet
+    name: ${experiment.model}
 
 paths:
     roots:
@@ -84,7 +84,7 @@ paths:
 
     matches: 
         all: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_all/train/train_data.hdf5
-        normal: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_normal/train/train_data2.hdf5
+        normal: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_normal/train/train_data.hdf5
 
     images: ${paths.roots.mav}/${task.cam}/data
 
@@ -108,7 +108,7 @@ train:
     num_sanity_val_steps: 1
     log_every_n_steps: 100
     accumulate_grad_batches: 1
-    learning_rate: 1e-4
+    learning_rate: 0.01 # 1e-4
 
 val:
     num_patch_pairs_to_save: 80
