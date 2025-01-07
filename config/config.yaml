@@ -65,7 +65,7 @@ task:
 
 experiment:
     model: smallnet
-    name: ${experiment.model}_depthwise_200k
+    name: ${experiment.model}_depthwise_300k
 
 paths:
     roots:

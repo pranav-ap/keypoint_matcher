@@ -1,0 +1,87 @@
+nohup: ignoring input
+/home/stud/ath/miniconda3/envs/kp_matcher_env/lib/python3.12/site-packages/albumentations/__init__.py:24: UserWarning: A new version of Albumentations is available: 1.4.24 (you have 1.4.23). Upgrade using: pip install -U albumentations. To disable automatic update checks, set the environment variable NO_ALBUMENTATIONS_UPDATE to 1.
+  check_for_updates()
+INFO     | get_neptune_logger | Setup Neptune Logger
+[neptune] [info   ] Neptune initialized. Open in the app: https://app.neptune.ai/neptune-ws/keypoint-matcher/e/KEY-303
+[neptune] [warning] /home/stud/ath/miniconda3/envs/kp_matcher_env/lib/python3.12/threading.py:1075: NeptuneWarning: Info (NVML): Not Supported. GPU usage metrics may not be reported. For more information, see https://docs.neptune.ai/help/nvml_error/
+INFO     | prep_directories | Clearing Directories
+INFO     | train | Using device: cuda
+/home/stud/ath/miniconda3/envs/kp_matcher_env/lib/python3.12/site-packages/lightning/fabric/plugins/environments/slurm.py:204: The `srun` command is available on your system but is not used. HINT: If your intention is to run Lightning on SLURM, prepend your python command with `srun` like so: srun python train.py ...
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+HPU available: False, using: 0 HPUs
+The following callbacks returned in `LightningModule.configure_callbacks` will override existing callbacks passed to Trainer: ModelCheckpoint, TQDMProgressBar
+INFO     | _get_names | Processing train
+INFO     | _get_names | Processing normal
+INFO     | _get_names | Image Pair Counts : MGO01_low_light cam0 : 535
+INFO     | _get_names | Image Pair Counts : MGO01_low_light cam1 : 562
+INFO     | _get_names | Image Pair Counts : MOO06_inspect_hard cam0 : 556
+INFO     | _get_names | Image Pair Counts : MOO06_inspect_hard cam1 : 555
+INFO     | _get_names | Image Pair Counts : MOO01_hand_puncher_1 cam0 : 609
+INFO     | _get_names | Image Pair Counts : MOO01_hand_puncher_1 cam1 : 609
+INFO     | _get_names | Image Pair Counts : MGO06_inspect_hard cam0 : 639
+INFO     | _get_names | Image Pair Counts : MGO06_inspect_hard cam1 : 640
+INFO     | _get_names | Image Pair Counts : MOO14_flickering_light cam0 : 714
+INFO     | _get_names | Image Pair Counts : MOO14_flickering_light cam1 : 708
+INFO     | _get_names | Image Pair Counts : MGO04_hand_shooter_hard cam0 : 741
+INFO     | _get_names | Image Pair Counts : MGO04_hand_shooter_hard cam1 : 733
+INFO     | _get_names | Image Pair Counts : MGO13_sudden_movements cam0 : 746
+INFO     | _get_names | Image Pair Counts : MGO13_sudden_movements cam1 : 745
+INFO     | _get_names | Image Pair Counts : MOO04_hand_shooter_hard cam0 : 785
+INFO     | _get_names | Image Pair Counts : MOO04_hand_shooter_hard cam1 : 778
+INFO     | _get_names | Image Pair Counts : MGO02_hand_puncher cam0 : 823
+INFO     | _get_names | Image Pair Counts : MGO02_hand_puncher cam1 : 801
+INFO     | _get_names | Image Pair Counts : MOO02_hand_puncher_2 cam0 : 936
+INFO     | _get_names | Image Pair Counts : MOO02_hand_puncher_2 cam1 : 908
+INFO     | _get_names | Image Pair Counts : MOO13_sudden_movements cam0 : 1047
+INFO     | _get_names | Image Pair Counts : MOO13_sudden_movements cam1 : 1046
+INFO     | _get_names | Processing all
+INFO     | _get_names | Image Pair Counts : MOO07_mapping_easy cam0 : 1236
+INFO     | _get_names | Image Pair Counts : MOO07_mapping_easy cam1 : 1236
+INFO     | _get_names | Image Pair Counts : MGO07_mapping_easy cam0 : 1595
+INFO     | _get_names | Image Pair Counts : MGO07_mapping_easy cam1 : 1595
+INFO     | _get_names | Image Pair Counts : MGO08_mapping_hard cam0 : 745
+INFO     | _get_names | Image Pair Counts : MGO08_mapping_hard cam1 : 745
+INFO     | setup | Train Dataset       : 23368 samples
+INFO     | _get_names | Processing val
+INFO     | _get_names | Processing normal
+INFO     | _get_names | Image Pair Counts : MOO07_mapping_easy cam0 : 89
+INFO     | _get_names | Image Pair Counts : MOO07_mapping_easy cam1 : 89
+INFO     | _get_names | Image Pair Counts : MOO08_mapping_hard cam0 : 103
+INFO     | _get_names | Image Pair Counts : MOO08_mapping_hard cam1 : 100
+INFO     | _get_names | Image Pair Counts : MGO08_mapping_hard cam0 : 111
+INFO     | _get_names | Image Pair Counts : MGO08_mapping_hard cam1 : 110
+INFO     | _get_names | Image Pair Counts : MGO07_mapping_easy cam0 : 147
+INFO     | _get_names | Image Pair Counts : MGO07_mapping_easy cam1 : 146
+INFO     | _get_names | Image Pair Counts : MOO05_inspect_easy cam0 : 185
+INFO     | _get_names | Image Pair Counts : MOO05_inspect_easy cam1 : 186
+INFO     | _get_names | Image Pair Counts : MGO05_inspect_easy cam0 : 265
+INFO     | _get_names | Image Pair Counts : MGO05_inspect_easy cam1 : 265
+INFO     | _get_names | Image Pair Counts : MGO14_flickering_light cam0 : 409
+INFO     | _get_names | Image Pair Counts : MGO14_flickering_light cam1 : 401
+INFO     | _get_names | Image Pair Counts : MOO03_hand_shooter_easy cam0 : 471
+INFO     | _get_names | Image Pair Counts : MOO03_hand_shooter_easy cam1 : 479
+INFO     | _get_names | Image Pair Counts : MGO03_hand_shooter_easy cam0 : 522
+INFO     | _get_names | Image Pair Counts : MGO03_hand_shooter_easy cam1 : 533
+INFO     | _get_names | Processing all
+INFO     | _get_names | Image Pair Counts : MOO09_short_1_updown cam0 : 146
+INFO     | _get_names | Image Pair Counts : MOO09_short_1_updown cam1 : 146
+INFO     | _get_names | Image Pair Counts : MOO10_short_2_panorama cam0 : 273
+INFO     | _get_names | Image Pair Counts : MOO10_short_2_panorama cam1 : 273
+INFO     | _get_names | Image Pair Counts : MOO11_short_3_backandforth cam0 : 404
+INFO     | _get_names | Image Pair Counts : MOO11_short_3_backandforth cam1 : 404
+INFO     | setup | Validation Dataset  : 6257 samples
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+
+  | Name  | Type              | Params | Mode 
+----------------------------------------------------
+0 | model | MatcherModel      | 511 K  | train
+1 | mae   | MeanAbsoluteError | 0      | train
+----------------------------------------------------
+511 K     Trainable params
+0         Non-trainable params
+511 K     Total params
+2.045     Total estimated model params size (MB)
+38        Modules in train mode
+0         Modules in eval mode
+Sanity Checking: |          | 0/? [00:00<?, ?it/s]Sanity Checking:   0%|          | 0/1 [00:00<?, ?it/s]Sanity Checking DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s]Sanity Checking DataLoader 0: 100%|██████████| 1/1 [00:01<00:00,  0.79it/s]                                                                           Training: |          | 0/? [00:00<?, ?it/s]Training:   0%|          | 0/11684 [00:00<?, ?it/s]Epoch 0:   0%|          | 0/11684 [00:00<?, ?it/s] Epoch 0:   9%|▊         | 1000/11684 [04:33<48:47,  3.65it/s]Epoch 0:   9%|▊         | 1000/11684 [04:33<48:47,  3.65it/s, v_num=-303]Epoch 0:  17%|█▋        | 2000/11684 [21:28<1:44:00,  1.55it/s, v_num=-303]Epoch 0:  17%|█▋        | 2000/11684 [21:28<1:44:00,  1.55it/s, v_num=-303]Epoch 0:  26%|██▌       | 3000/11684 [38:33<1:51:36,  1.30it/s, v_num=-303]Epoch 0:  26%|██▌       | 3000/11684 [38:33<1:51:36,  1.30it/s, v_num=-303]Epoch 0:  34%|███▍      | 4000/11684 [55:59<1:47:33,  1.19it/s, v_num=-303]Epoch 0:  34%|███▍      | 4000/11684 [55:59<1:47:33,  1.19it/s, v_num=-303]Epoch 0:  43%|████▎     | 5000/11684 [1:13:45<1:38:35,  1.13it/s, v_num=-303]Epoch 0:  43%|████▎     | 5000/11684 [1:13:45<1:38:35,  1.13it/s, v_num=-303]Epoch 0:  51%|█████▏    | 6000/11684 [1:31:13<1:26:25,  1.10it/s, v_num=-303]Epoch 0:  51%|█████▏    | 6000/11684 [1:31:13<1:26:25,  1.10it/s, v_num=-303]Epoch 0:  60%|█████▉    | 7000/11684 [1:48:36<1:12:40,  1.07it/s, v_num=-303]Epoch 0:  60%|█████▉    | 7000/11684 [1:48:36<1:12:40,  1.07it/s, v_num=-303]Epoch 0:  68%|██████▊   | 8000/11684 [2:06:11<58:06,  1.06it/s, v_num=-303]  Epoch 0:  68%|██████▊   | 8000/11684 [2:06:11<58:06,  1.06it/s, v_num=-303]Epoch 0:  77%|███████▋  | 9000/11684 [2:23:05<42:40,  1.05it/s, v_num=-303]Epoch 0:  77%|███████▋  | 9000/11684 [2:23:05<42:40,  1.05it/s, v_num=-303]Epoch 0:  86%|████████▌ | 10000/11684 [2:40:00<26:56,  1.04it/s, v_num=-303]Epoch 0:  86%|████████▌ | 10000/11684 [2:40:00<26:56,  1.04it/s, v_num=-303]Epoch 0:  94%|█████████▍| 11000/11684 [2:57:17<11:01,  1.03it/s, v_num=-303]Epoch 0:  94%|█████████▍| 11000/11684 [2:57:17<11:01,  1.03it/s, v_num=-303]Epoch 0: 100%|██████████| 11684/11684 [3:09:17<00:00,  1.03it/s, v_num=-303]Epoch 0: 100%|██████████| 11684/11684 [3:09:17<00:00,  1.03it/s, v_num=-303]Epoch 0: 100%|██████████| 11684/11684 [3:09:17<00:00,  1.03it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 0:   0%|          | 0/11684 [00:00<?, ?it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]              Epoch 1:   0%|          | 0/11684 [00:00<?, ?it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 1:   9%|▊         | 1000/11684 [16:53<3:00:31,  0.99it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 1:   9%|▊         | 1000/11684 [16:53<3:00:31,  0.99it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 1:  17%|█▋        | 2000/11684 [34:08<2:45:19,  0.98it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 1:  17%|█▋        | 2000/11684 [34:08<2:45:19,  0.98it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 1:  26%|██▌       | 3000/11684 [51:44<2:29:46,  0.97it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 1:  26%|██▌       | 3000/11684 [51:44<2:29:46,  0.97it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 1:  34%|███▍      | 4000/11684 [1:09:31<2:13:33,  0.96it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 1:  34%|███▍      | 4000/11684 [1:09:31<2:13:33,  0.96it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 1:  43%|████▎     | 5000/11684 [1:26:48<1:56:02,  0.96it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 1:  43%|████▎     | 5000/11684 [1:26:48<1:56:02,  0.96it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 1:  51%|█████▏    | 6000/11684 [1:43:59<1:38:31,  0.96it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 1:  51%|█████▏    | 6000/11684 [1:43:59<1:38:31,  0.96it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 1:  60%|█████▉    | 7000/11684 [2:00:49<1:20:51,  0.97it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 1:  60%|█████▉    | 7000/11684 [2:00:49<1:20:51,  0.97it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 1:  68%|██████▊   | 8000/11684 [2:17:49<1:03:28,  0.97it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 1:  68%|██████▊   | 8000/11684 [2:17:49<1:03:28,  0.97it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 1:  77%|███████▋  | 9000/11684 [2:34:59<46:13,  0.97it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]  Epoch 1:  77%|███████▋  | 9000/11684 [2:34:59<46:13,  0.97it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 1:  86%|████████▌ | 10000/11684 [5:01:05<50:42,  0.55it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 1:  86%|████████▌ | 10000/11684 [5:01:05<50:42,  0.55it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 1:  94%|█████████▍| 11000/11684 [5:05:21<18:59,  0.60it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]Epoch 1:  94%|█████████▍| 11000/11684 [5:05:21<18:59,  0.60it/s, v_num=-303, train/loss=0.182, train/coords_loss=0.161, train/confidence_loss=0.0212, train/coords_mae=4.790]
