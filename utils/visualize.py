@@ -145,7 +145,7 @@ def show_batch(
         x, y = patch_level_reference_coords[i]
         reference_patch = prepare_patch(reference_patch, x, y, color='red')
 
-        rotation_true = rotations_true[i].item()
+        # rotation_true = rotations_true[i].item()
         # rotation = f"{rotations[i].item():.2f}°" if rotations is not None else '-'
 
         target_patch = target_patches[i]
@@ -166,11 +166,11 @@ def show_batch(
         combined_image.paste(target_patch, (x2, y))
 
         # Draw rotation value below the patches
-        draw = ImageDraw.Draw(combined_image)
+        # draw = ImageDraw.Draw(combined_image)
 
-        text_x = x1 + patch_size // 2
-        text_y = y + patch_size + 2 * border_size + 10  
-        draw.text((text_x, text_y), f"{rotation_true:.2f}°", fill="black", anchor="mm", font=font)
+        # text_x = x1 + patch_size // 2
+        # text_y = y + patch_size + 2 * border_size + 10  
+        # draw.text((text_x, text_y), f"{rotation_true:.2f}°", fill="black", anchor="mm", font=font)
 
         # text_x = x2 - 5 + patch_size // 2
         # text_y = y + patch_size + 2 * border_size + 10  

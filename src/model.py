@@ -40,7 +40,7 @@ class MatcherModel(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.positional_encoding = positionalencoding2d(64, height=32, width=32).unsqueeze(0).to('cuda')
+        self.positional_encoding = positionalencoding2d(32, height=32, width=32).unsqueeze(0).to('cuda')
 
         in_channels = 3 * 2 + 2
 
@@ -48,30 +48,30 @@ class MatcherModel(nn.Module):
             nn.Conv2d(in_channels, 32, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(32),
             nn.ReLU(),
-
-            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(64),
         )
 
         self.model = nn.Sequential(
-            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(32, 64, kernel_size=1, stride=1),
+            nn.BatchNorm2d(64),
+
+            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+
+            nn.Conv2d(64, 128, kernel_size=1, stride=1),
             nn.BatchNorm2d(128),
             nn.ReLU(),
 
-            nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(256),
+            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
 
-            nn.Conv2d(256, 512, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(128, 512, kernel_size=1, stride=1),
             nn.BatchNorm2d(512),
             nn.ReLU(),
 
-            nn.Conv2d(512, 1024, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(1024),
-            nn.ReLU(),
-
-            nn.Conv2d(1024, 256, kernel_size=1, stride=1),
-            nn.BatchNorm2d(256),
+            nn.Conv2d(512, 128, kernel_size=1, stride=1),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
 
             # b, c, h, w
@@ -82,11 +82,6 @@ class MatcherModel(nn.Module):
         )
 
         self.coords_head = nn.Sequential(
-            nn.Linear(256, 128),
-            nn.BatchNorm1d(128),
-            nn.ReLU(),
-            # nn.Dropout(0.2),
-
             nn.Linear(128, 64),
             nn.BatchNorm1d(64),
             nn.ReLU(),
@@ -97,11 +92,6 @@ class MatcherModel(nn.Module):
         )
 
         self.confidence_head = nn.Sequential(
-            nn.Linear(256, 128),
-            nn.BatchNorm1d(128),
-            nn.ReLU(),
-            # nn.Dropout(0.2),
-            
             nn.Linear(128, 64),
             nn.BatchNorm1d(64),
             nn.ReLU(),
