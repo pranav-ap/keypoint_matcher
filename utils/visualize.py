@@ -101,11 +101,15 @@ def show_batch(
 
         draw_im = ImageDraw.Draw(patch)
         draw_im.ellipse((x - radius, y - radius, x + radius, y + radius), outline=color)
+        
+        # height = 4
+        # draw_im.line([(x, height + 10), (x, height)], fill="red", width=1)
+
         patch = patch.resize((patch_size, patch_size))
         patch = ImageOps.expand(patch, border=border_size, fill=border_color)
         return patch
 
-    def prepare_target_patch(patch, x, y, a, b):
+    def prepare_target_patch(patch, x, y, a, b, rot=None):
         # patch = denormalize(patch)
         # patch = min_max_normalize(patch, min_val=0.0, max_val=1.0)  
         patch = to_pil(patch)
@@ -118,6 +122,18 @@ def show_batch(
         if not just_gt:
             draw_im.ellipse((x - radius, y - radius, x + radius, y + radius), outline='yellow')
 
+            # Compute the endpoints for the line
+            # length = 4
+
+            # radians = math.radians(float(rot))
+
+            # x1 = x - length * math.sin(radians)
+            # y1 = y + length * math.cos(radians)
+            # x2 = x + length * math.sin(radians)
+            # y2 = y - length * math.cos(radians)
+
+            # draw_im.line([(x1, y1), (x2, y2)], fill="green", width=1)
+
         draw_im.rectangle((a - radius - 1, b - radius - 1, a + radius + 1, b + radius + 1), outline='green')
 
         patch = patch.resize((patch_size, patch_size))
@@ -129,13 +145,13 @@ def show_batch(
         x, y = patch_level_reference_coords[i]
         reference_patch = prepare_patch(reference_patch, x, y, color='red')
 
+        rotation_true = rotations_true[i].item()
+        # rotation = f"{rotations[i].item():.2f}°" if rotations is not None else '-'
+
         target_patch = target_patches[i]
         x, y = patch_level_target_coords[i]
         a, b = patch_level_target_coords_true[i]
-        target_patch = prepare_target_patch(target_patch, x, y, a, b)
-
-        # rotation_true = rotations_true[i].item()
-        # rotation = f"{rotations[i].item():.2f}°" if rotations is not None else '-'
+        target_patch = prepare_target_patch(target_patch, x, y, a, b) #, rotations[i].item())
 
         # conf = f"{confidence_pred[i].item():.2f}" if confidence_pred is not None else '-'
 
@@ -150,11 +166,11 @@ def show_batch(
         combined_image.paste(target_patch, (x2, y))
 
         # Draw rotation value below the patches
-        # draw = ImageDraw.Draw(combined_image)
+        draw = ImageDraw.Draw(combined_image)
 
-        # text_x = x1 + patch_size // 2
-        # text_y = y + patch_size + 2 * border_size + 10  
-        # draw.text((text_x, text_y), f"{rotation_true:.2f}°", fill="black", anchor="mm", font=font)
+        text_x = x1 + patch_size // 2
+        text_y = y + patch_size + 2 * border_size + 10  
+        draw.text((text_x, text_y), f"{rotation_true:.2f}°", fill="black", anchor="mm", font=font)
 
         # text_x = x2 - 5 + patch_size // 2
         # text_y = y + patch_size + 2 * border_size + 10  

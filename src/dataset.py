@@ -425,7 +425,7 @@ class MatchesDataModule(L.LightningDataModule):
         if stage == "fit":
             self.dataset['train'] = MatchesDataset(
                 stage="train",
-                perturb_target=True,
+                perturb_target=True,  # True False
 
                 patch_normalize=self.patch_normalize,
                 image_augmentation_no_kp=self.image_augmentation_no_kp,
