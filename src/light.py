@@ -69,7 +69,7 @@ class Light(pl.LightningModule):
 
     @staticmethod
     def _compute_confidence_loss(conf_pred, coords_pred, coords):
-        std_dev = 1.0
+        std_dev = 2.0
         covariance_matrix = torch.diag(torch.tensor([std_dev ** 2, std_dev ** 2], device=coords.device))
 
         gaussian = torch.distributions.MultivariateNormal(
@@ -116,7 +116,7 @@ class Light(pl.LightningModule):
 
         # Calc Loss
 
-        loss = coords_loss + conf_loss # + rotation_loss
+        loss = coords_loss * 0.8 + conf_loss * 0.2 # + rotation_loss
 
         # Log metrics
 
@@ -145,7 +145,7 @@ class Light(pl.LightningModule):
 
         # Calc Loss
 
-        loss = coords_loss + conf_loss # + rotation_loss
+        loss = coords_loss * 0.8 + conf_loss * 0.2 # + rotation_loss
         
         # Log metrics
 
@@ -174,7 +174,7 @@ class Light(pl.LightningModule):
 
         # Calc Loss
 
-        loss = coords_loss + conf_loss # + rotation_loss
+        loss = coords_loss * 0.8 + conf_loss * 0.2 # + rotation_loss
         
         # Log metrics
 
@@ -238,16 +238,16 @@ class Light(pl.LightningModule):
         #     )
 
     def configure_optimizers(self):
-        optimizer = torch.optim.SGD(
-            self.model.parameters(),
-            lr=self.learning_rate,
-            momentum=0.9,
-        )
-
-        # optimizer = torch.optim.AdamW(
+        # optimizer = torch.optim.SGD(
         #     self.model.parameters(),
-        #     lr=self.learning_rate
+        #     lr=self.learning_rate,
+        #     momentum=0.9,
         # )
+
+        optimizer = torch.optim.AdamW(
+            self.model.parameters(),
+            lr=self.learning_rate
+        )
 
         lr_scheduler = {
             "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(
