@@ -7,6 +7,8 @@ import math
 
 torch.set_float32_matmul_precision('medium')
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 def positionalencoding2d(d_model, height, width):
     """
@@ -40,7 +42,7 @@ class MatcherModel(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.positional_encoding = positionalencoding2d(32, height=32, width=32).unsqueeze(0).to('cuda')
+        self.positional_encoding = positionalencoding2d(32, height=32, width=32).unsqueeze(0).to(device)
 
         in_channels = 3 * 2 + 2
 
@@ -51,9 +53,16 @@ class MatcherModel(nn.Module):
         )
 
         self.model = nn.Sequential(
+            # DWC
+            nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+
             nn.Conv2d(32, 64, kernel_size=1, stride=1),
             nn.BatchNorm2d(64),
+            nn.ReLU(),
 
+            # DWC
             nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(),
@@ -62,15 +71,22 @@ class MatcherModel(nn.Module):
             nn.BatchNorm2d(128),
             nn.ReLU(),
 
+            # DWC
             nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(),
 
-            nn.Conv2d(128, 512, kernel_size=1, stride=1),
-            nn.BatchNorm2d(512),
+            nn.Conv2d(128, 256, kernel_size=1, stride=1),
+            nn.BatchNorm2d(256),
             nn.ReLU(),
 
-            nn.Conv2d(512, 128, kernel_size=1, stride=1),
+            # C
+            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+
+            # C
+            nn.Conv2d(256, 128, kernel_size=1, stride=1),
             nn.BatchNorm2d(128),
             nn.ReLU(),
 
@@ -87,7 +103,12 @@ class MatcherModel(nn.Module):
             nn.ReLU(),
             # nn.Dropout(0.2),
 
-            nn.Linear(64, 2),
+            nn.Linear(64, 32),
+            nn.BatchNorm1d(32),
+            nn.ReLU(),
+            # nn.Dropout(0.2),
+
+            nn.Linear(32, 2),
             nn.Tanh(),
         )
 
@@ -97,7 +118,12 @@ class MatcherModel(nn.Module):
             nn.ReLU(),
             # nn.Dropout(0.2),
 
-            nn.Linear(64, 1),
+            nn.Linear(64, 32),
+            nn.BatchNorm1d(32),
+            nn.ReLU(),
+            # nn.Dropout(0.2),
+
+            nn.Linear(32, 1),
             nn.Sigmoid(),
         )
 
@@ -122,3 +148,4 @@ class MatcherModel(nn.Module):
         confidence = self.confidence_head(x)
         
         return coords, confidence
+

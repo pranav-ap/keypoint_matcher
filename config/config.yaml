@@ -21,11 +21,11 @@ task:
                 - MOO02_hand_puncher_2  #  1844
                 - MOO13_sudden_movements  #  2093
 
-            all: 
-                - MOO07_mapping_easy
-                - MOO08_mapping_hard 
-                - MGO07_mapping_easy 
-                - MGO08_mapping_hard
+            all: []
+                # - MOO07_mapping_easy
+                # - MOO08_mapping_hard 
+                # - MGO07_mapping_easy 
+                # - MGO08_mapping_hard
 
         val:
             normal: 
@@ -48,10 +48,10 @@ task:
                 - MOO03_hand_shooter_easy #  950
                 - MGO03_hand_shooter_easy #  1055
 
-            all: 
-                - MOO09_short_1_updown
-                - MOO10_short_2_panorama
-                - MOO11_short_3_backandforth
+            all: []
+                # - MOO09_short_1_updown
+                # - MOO10_short_2_panorama
+                # - MOO11_short_3_backandforth
 
         test:
             - Nothing
@@ -64,8 +64,8 @@ task:
     eda_mode: False  # True False
 
 experiment:
-    model: smallnet
-    name: ${experiment.model}_300k
+    model: bignet
+    name: ${experiment.model}_800k
 
 paths:
     roots:
@@ -103,7 +103,7 @@ train:
     overfit_batches: 0
 
     patience: 10
-    max_epochs: 25 # 200
+    max_epochs: 200
     check_val_every_n_epoch: 2
     num_sanity_val_steps: 1
     log_every_n_steps: 100

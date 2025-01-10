@@ -48,8 +48,10 @@ def show_batch(
     patch_level_reference_coords, 
 
     patch_level_target_coords, patch_level_target_coords_true, 
+    
     rotations_true=None, rotations=None, 
     confidence_pred=None,
+
     limit_count=None, border_size=2, border_color="white", n_columns=2,
     just_gt=False,
     ):
@@ -153,7 +155,8 @@ def show_batch(
         a, b = patch_level_target_coords_true[i]
         target_patch = prepare_target_patch(target_patch, x, y, a, b) #, rotations[i].item())
 
-        # conf = f"{confidence_pred[i].item():.2f}" if confidence_pred is not None else '-'
+        if confidence_pred is not None:
+            conf = f"{confidence_pred[i].item():.2f}" if confidence_pred is not None else '-'
 
         row = i // n_columns
         col = i % n_columns
@@ -166,15 +169,17 @@ def show_batch(
         combined_image.paste(target_patch, (x2, y))
 
         # Draw rotation value below the patches
-        # draw = ImageDraw.Draw(combined_image)
+        draw = ImageDraw.Draw(combined_image)
 
-        # text_x = x1 + patch_size // 2
-        # text_y = y + patch_size + 2 * border_size + 10  
+        text_x = x1 + patch_size // 2
+        text_y = y + patch_size + 2 * border_size + 10  
         # draw.text((text_x, text_y), f"{rotation_true:.2f}°", fill="black", anchor="mm", font=font)
 
-        # text_x = x2 - 5 + patch_size // 2
-        # text_y = y + patch_size + 2 * border_size + 10  
+        text_x = x2 - 5 + patch_size // 2
+        text_y = y + patch_size + 2 * border_size + 10  
         # draw.text((text_x, text_y), f"{rotation}, {conf}", fill="black", anchor="mm", font=font)
-        # draw.text((text_x, text_y), f"{conf}", fill="black", anchor="mm", font=font)
+
+        if confidence_pred is not None:
+            draw.text((text_x, text_y), f"{conf}", fill="black", anchor="mm", font=font)
 
     return combined_image
