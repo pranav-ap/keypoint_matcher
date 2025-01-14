@@ -36,35 +36,7 @@ def positionalencoding2d(d_model, height, width):
     pe[d_model + 1::2, :, :] = torch.cos(pos_h * div_term).transpose(0, 1).unsqueeze(2).repeat(1, 1, width)
 
     return pe
-
-
-class ResNetBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, stride=1, downsample=None):
-        super().__init__()
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(out_channels)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(out_channels)
-        self.downsample = downsample
-
-    def forward(self, x):
-        identity = x
-        if self.downsample:
-            identity = self.downsample(x)
-
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-
-        out = self.conv2(out)
-        out = self.bn2(out)
-
-        out += identity
-        out = self.relu(out)
-
-        return out
-
+    
 
 class MatcherModel(nn.Module):
     def __init__(self):
@@ -80,66 +52,104 @@ class MatcherModel(nn.Module):
             nn.ReLU(),
         )
 
-        # Stacked ResNet blocks
         self.model = nn.Sequential(
-            ResNetBlock(32, 32),
-            ResNetBlock(32, 64, stride=2, downsample=nn.Sequential(
-                nn.Conv2d(32, 64, kernel_size=1, stride=2, bias=False),
-                nn.BatchNorm2d(64))),
-            ResNetBlock(64, 128, stride=2, downsample=nn.Sequential(
-                nn.Conv2d(64, 128, kernel_size=1, stride=2, bias=False),
-                nn.BatchNorm2d(128))),
-            ResNetBlock(128, 256, stride=2, downsample=nn.Sequential(
-                nn.Conv2d(128, 256, kernel_size=1, stride=2, bias=False),
-                nn.BatchNorm2d(256))),
-            ResNetBlock(256, 512, stride=2, downsample=nn.Sequential(
-                nn.Conv2d(256, 512, kernel_size=1, stride=2, bias=False),
-                nn.BatchNorm2d(512))),
+            # DWC
+            nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+
+            nn.Conv2d(32, 64, kernel_size=1, stride=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+
+            # DWC
+            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+
+            nn.Conv2d(64, 128, kernel_size=1, stride=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+
+            # DWC
+            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+
+            nn.Conv2d(128, 256, kernel_size=1, stride=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+
+            # DWC
+            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+
+            nn.Conv2d(256, 512, kernel_size=1, stride=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(),
+            
+            # C
+            nn.Conv2d(512, 128, kernel_size=1, stride=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+
+            # b, c, h, w
             nn.AdaptiveMaxPool2d((1, 1)),
+            # b, c, 1, 1 
             nn.Flatten(),
+            # b, c
         )
 
         self.coords_head = nn.Sequential(
-            nn.Linear(512, 128),
-            nn.BatchNorm1d(128),
+            nn.Linear(128, 64),
+            nn.BatchNorm1d(64),
             nn.ReLU(),
+            # nn.Dropout(0.2),
 
-            nn.Linear(128, 32),
+            nn.Linear(64, 32),
             nn.BatchNorm1d(32),
             nn.ReLU(),
+            # nn.Dropout(0.2),
 
             nn.Linear(32, 2),
             nn.Tanh(),
         )
 
         self.confidence_head = nn.Sequential(
-            nn.Linear(512, 128),
-            nn.BatchNorm1d(128),
+            nn.Linear(128, 64),
+            nn.BatchNorm1d(64),
             nn.ReLU(),
+            # nn.Dropout(0.2),
 
-            nn.Linear(128, 32),
+            nn.Linear(64, 32),
             nn.BatchNorm1d(32),
             nn.ReLU(),
+            # nn.Dropout(0.2),
 
             nn.Linear(32, 1),
             nn.Sigmoid(),
         )
 
-    def forward(self, reference_patches, target_patches, reference_coords):
+    def forward(self, 
+                reference_patches, 
+                target_patches, 
+                reference_coords, 
+                ):
         reference_coords = reference_coords / 31.0
         height, width = reference_patches.shape[2], reference_patches.shape[3]
         reference_coords = reference_coords.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, height, width)
 
         combined = torch.cat([reference_patches, target_patches, reference_coords], dim=1)
-        x = self.feature_extractor(combined)
+        x = self.feature_extractor(combined) 
         x = x.to('cuda')
 
-        x = x + self.positional_encoding
+        x = x + self.positional_encoding 
         x = self.model(x)
         x = x.to('cuda')
 
         coords = self.coords_head(x)
         confidence = self.confidence_head(x)
-
+        
         return coords, confidence
 

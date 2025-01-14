@@ -21,11 +21,11 @@ task:
                 - MOO02_hand_puncher_2  #  1844
                 - MOO13_sudden_movements  #  2093
 
-            all: 
-                - MOO07_mapping_easy
-                - MOO08_mapping_hard 
-                - MGO07_mapping_easy 
-                - MGO08_mapping_hard
+            all: []
+                # - MOO07_mapping_easy
+                # - MOO08_mapping_hard 
+                # - MGO07_mapping_easy 
+                # - MGO08_mapping_hard
 
         val:
             normal: 
@@ -48,10 +48,10 @@ task:
                 - MOO03_hand_shooter_easy #  950
                 - MGO03_hand_shooter_easy #  1055
 
-            all: 
-                - MOO09_short_1_updown
-                - MOO10_short_2_panorama
-                - MOO11_short_3_backandforth
+            all: []
+                # - MOO09_short_1_updown
+                # - MOO10_short_2_panorama
+                # - MOO11_short_3_backandforth
 
         test:
             - Nothing
@@ -65,7 +65,7 @@ task:
 
 experiment:
     model: bignet
-    name: ${experiment.model}_800k
+    name: ${experiment.model}_52_5mil_4stddev
 
 paths:
     roots:
@@ -93,11 +93,11 @@ image:
     original_image_shape: [640, 480]  # [640, 480]
     patch_size: 32
     patch_border: 2 # pixels 2 4
-
+ 
 train:
     train_batch_size: 2  #  4
     val_batch_size: 2  #  4
-    num_patches_per_image: 120
+    num_patches_per_image: 100
 
     fast_dev_run: False  # True False
     overfit_batches: 0
@@ -108,7 +108,7 @@ train:
     num_sanity_val_steps: 1
     log_every_n_steps: 100
     accumulate_grad_batches: 1
-    learning_rate: 1e-3 # 1e-4  0.01  
+    learning_rate: 1e-4 # 1e-4  0.01  
 
 val:
     num_patch_pairs_to_save: 80
