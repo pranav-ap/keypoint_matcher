@@ -39,30 +39,44 @@ def positionalencoding2d(d_model, height, width):
 
 
 class ResNetBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, stride=1, downsample=None):
+    def __init__(self, in_channels, out_channels, stride=1):
         super().__init__()
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(out_channels)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(out_channels)
-        self.downsample = downsample
+
+        # self.block = nn.Sequential(
+        #     nn.BatchNorm2d(in_channels),
+        #     nn.ReLU(),
+        #     nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False),
+            
+        #     nn.BatchNorm2d(out_channels),
+        #     nn.ReLU(),
+        #     nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
+        # )
+        
+        self.block = nn.Sequential(
+            nn.BatchNorm2d(in_channels),
+            nn.ReLU(),
+            nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=stride, padding=1, bias=False),
+            
+            nn.BatchNorm2d(in_channels),
+            nn.ReLU(),
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
+        )
+
+        self.shortcut = None
+        if in_channels != out_channels:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(out_channels)
+            )
 
     def forward(self, x):
         identity = x
-        if self.downsample:
-            identity = self.downsample(x)
+        
+        if self.shortcut:
+            identity = self.shortcut(x)
 
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-
-        out = self.conv2(out)
-        out = self.bn2(out)
-
-        out += identity
-        out = self.relu(out)
-
+        out = self.block(x)
+        out += identity        
         return out
 
 
@@ -83,18 +97,17 @@ class MatcherModel(nn.Module):
         # Stacked ResNet blocks
         self.model = nn.Sequential(
             ResNetBlock(32, 32),
-            ResNetBlock(32, 64, stride=2, downsample=nn.Sequential(
-                nn.Conv2d(32, 64, kernel_size=1, stride=2, bias=False),
-                nn.BatchNorm2d(64))),
-            ResNetBlock(64, 128, stride=2, downsample=nn.Sequential(
-                nn.Conv2d(64, 128, kernel_size=1, stride=2, bias=False),
-                nn.BatchNorm2d(128))),
-            ResNetBlock(128, 256, stride=2, downsample=nn.Sequential(
-                nn.Conv2d(128, 256, kernel_size=1, stride=2, bias=False),
-                nn.BatchNorm2d(256))),
-            ResNetBlock(256, 512, stride=2, downsample=nn.Sequential(
-                nn.Conv2d(256, 512, kernel_size=1, stride=2, bias=False),
-                nn.BatchNorm2d(512))),
+            ResNetBlock(32, 64, stride=1),
+            ResNetBlock(64, 128, stride=2),
+            ResNetBlock(128, 256, stride=2),
+            ResNetBlock(256, 512, stride=2),
+            ResNetBlock(512, 1024, stride=2),
+
+            # C
+            nn.Conv2d(1024, 512, kernel_size=1, stride=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(),
+
             nn.AdaptiveMaxPool2d((1, 1)),
             nn.Flatten(),
         )
@@ -125,6 +138,19 @@ class MatcherModel(nn.Module):
             nn.Sigmoid(),
         )
 
+        self.rotation_head = nn.Sequential(
+            nn.Linear(512, 128),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+
+            nn.Linear(128, 32),
+            nn.BatchNorm1d(32),
+            nn.ReLU(),
+
+            nn.Linear(32, 1),
+            nn.Tanh(),
+        )
+
     def forward(self, reference_patches, target_patches, reference_coords):
         reference_coords = reference_coords / 31.0
         height, width = reference_patches.shape[2], reference_patches.shape[3]
@@ -140,6 +166,7 @@ class MatcherModel(nn.Module):
 
         coords = self.coords_head(x)
         confidence = self.confidence_head(x)
+        rotation = self.rotation_head(x)
 
-        return coords, confidence
+        return coords, confidence, rotation
 

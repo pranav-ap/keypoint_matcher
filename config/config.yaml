@@ -65,7 +65,7 @@ task:
 
 experiment:
     model: bignet
-    name: ${experiment.model}_52_5mil_4stddev
+    name: ${experiment.model}_60_11mil_4stddev_3head
 
 paths:
     roots:
