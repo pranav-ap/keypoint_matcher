@@ -1,5 +1,14 @@
 log_level: TRACE  # TRACE WARNING
 
+
+experiment:
+    model: finalnet
+    linux: 58
+    params: 10mil
+    heads: 2
+    name: ${experiment.model}_${experiment.linux}_linux_${experiment.params}_${experiment.heads}_heads
+
+
 task:
     dataset: monado_slam
 
@@ -21,8 +30,8 @@ task:
                 - MOO02_hand_puncher_2  #  1844
                 - MOO13_sudden_movements  #  2093
 
-            all: []
-                # - MOO07_mapping_easy
+            all: 
+                - MOO07_mapping_easy
                 # - MOO08_mapping_hard 
                 # - MGO07_mapping_easy 
                 # - MGO08_mapping_hard
@@ -48,10 +57,10 @@ task:
                 - MOO03_hand_shooter_easy #  950
                 - MGO03_hand_shooter_easy #  1055
 
-            all: []
-                # - MOO09_short_1_updown
-                # - MOO10_short_2_panorama
-                # - MOO11_short_3_backandforth
+            all: 
+                - MOO09_short_1_updown
+                - MOO10_short_2_panorama
+                - MOO11_short_3_backandforth
 
         test:
             - Nothing
@@ -62,10 +71,6 @@ task:
         - cam1
 
     eda_mode: False  # True False
-
-experiment:
-    model: bignet
-    name: ${experiment.model}_52linux_11mil_4stddev_3head_02rot
 
 paths:
     roots:
@@ -102,7 +107,7 @@ train:
     fast_dev_run: False  # True False
     overfit_batches: 0
 
-    patience: 10
+    patience: 5
     max_epochs: 200
     check_val_every_n_epoch: 2
     num_sanity_val_steps: 1
