@@ -54,16 +54,16 @@ class Light(pl.LightningModule):
         return loss
 
     @staticmethod
-    def _compute_coords_accuracy_percentage(pred, target):
-        # Scale pred from [-1, 1] to []
-        scaled_pred = ((pred.float() + 1) / 2) * 15.5 
+    def _compute_coords_accuracy_percentage(pred, target, pixels=1):
+        # Scale pred from [-1, 1] to [0, 31]
+        scaled_pred = (pred.float() + 1) * 15.5 
         
         difference = torch.abs(scaled_pred - target)
 
-        # Check which differences exceed 2 pixels
-        exceeds_2 = (difference > 2).any(dim=1)
+        # Check which differences exceed N pixels
+        exceeds = (difference > pixels).any(dim=1)
         # Calculate the percentage
-        percentage = (exceeds_2.sum().item() / scaled_pred.shape[0]) * 100
+        percentage = (exceeds.sum().item() / scaled_pred.shape[0]) * 100
 
         return percentage
 
@@ -123,16 +123,17 @@ class Light(pl.LightningModule):
 
         conf_loss = self._compute_confidence_loss(conf_pred, coords_pred, coords)
 
-        coords_percent = self._compute_coords_accuracy_percentage(coords_pred, coords)
+        coords_percent_2_pixel = self._compute_coords_accuracy_percentage(coords_pred, coords, pixels=2)
+        coords_percent_1_pixel = self._compute_coords_accuracy_percentage(coords_pred, coords, pixels=1)
 
-        return coords_loss, coords_pred, conf_loss, conf_pred, rotation_loss, rotation_pred, coords_percent
+        return coords_loss, coords_pred, conf_loss, conf_pred, rotation_loss, rotation_pred, coords_percent_2_pixel, coords_percent_1_pixel
 
     def training_step(self, batch: Match, batch_idx):
-        coords_loss, coords_pred, conf_loss, conf_pred, rotation_loss, rotation_pred, coords_percent = self._shared_step(batch)
+        coords_loss, coords_pred, conf_loss, conf_pred, rotation_loss, rotation_pred, coords_percent_2_pixel, coords_percent_1_pixel = self._shared_step(batch)
 
         # Calc Loss
 
-        loss = coords_loss * 0.4 + conf_loss * 0.2 + rotation_loss * 0.4
+        loss = coords_loss * 0.6 + conf_loss * 0.2 + rotation_loss * 0.2
         
         # Log metrics
 
@@ -145,7 +146,8 @@ class Light(pl.LightningModule):
             "train/rotation_loss": rotation_loss,
             "train/confidence_loss": conf_loss,
             "train/coords_mae": self.mae(coords_pred, coords.squeeze(1)),
-            "train/coords_percent": coords_percent,
+            "train/coords_percent_1_pixel": coords_percent_1_pixel,
+            "train/coords_percent_2_pixel": coords_percent_2_pixel,
         }
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
@@ -158,11 +160,11 @@ class Light(pl.LightningModule):
 
     @torch.no_grad()
     def validation_step(self, batch: Match, batch_idx):
-        coords_loss, coords_pred, conf_loss, conf_pred, rotation_loss, rotation_pred, coords_percent = self._shared_step(batch)
+        coords_loss, coords_pred, conf_loss, conf_pred, rotation_loss, rotation_pred, coords_percent_2_pixel, coords_percent_1_pixel = self._shared_step(batch)
 
         # Calc Loss
 
-        loss = coords_loss * 0.4 + conf_loss * 0.2 + rotation_loss * 0.4
+        loss = coords_loss * 0.6 + conf_loss * 0.2 + rotation_loss * 0.2
         
         # Log metrics
 
@@ -175,7 +177,8 @@ class Light(pl.LightningModule):
             "val/rotation_loss": rotation_loss,
             "val/confidence_loss": conf_loss,
             "val/coords_mae": self.mae(coords_pred, coords.squeeze(1)),
-            "val/coords_percent": coords_percent,
+            "val/coords_percent_1_pixel": coords_percent_1_pixel,
+            "val/coords_percent_2_pixel": coords_percent_2_pixel,
         }
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
@@ -188,11 +191,11 @@ class Light(pl.LightningModule):
 
     @torch.no_grad()
     def test_step(self, batch: Match, batch_idx):
-        coords_loss, coords_pred, conf_loss, conf_pred, rotation_loss, rotation_pred, coords_percent = self._shared_step(batch)
+        coords_loss, coords_pred, conf_loss, conf_pred, rotation_loss, rotation_pred, coords_percent_2_pixel, coords_percent_1_pixel = self._shared_step(batch)
 
         # Calc Loss
 
-        loss = coords_loss * 0.4 + conf_loss * 0.2 + rotation_loss * 0.4
+        loss = coords_loss * 0.6 + conf_loss * 0.2 + rotation_loss * 0.2
         
         # Log metrics
 
@@ -205,7 +208,8 @@ class Light(pl.LightningModule):
             "test/rotation_loss": rotation_loss,
             "test/confidence_loss": conf_loss,
             "test/coords_mae": self.mae(coords_pred, coords.squeeze(1)),
-            "test/coords_percent": coords_percent,
+            "test/coords_percent_1_pixel": coords_percent_1_pixel,
+            "test/coords_percent_2_pixel": coords_percent_2_pixel,
         }
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
