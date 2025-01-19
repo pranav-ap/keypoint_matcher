@@ -45,15 +45,15 @@ class ResNetBlock(nn.Module):
         self.block = nn.Sequential(
             nn.BatchNorm2d(in_channels),
             nn.ReLU(),
-            nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=stride, padding=1, bias=False),
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False), 
             
-            nn.BatchNorm2d(in_channels),
+            nn.BatchNorm2d(out_channels),
             nn.ReLU(),
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
         )
 
         self.shortcut = None
-        if in_channels != out_channels:
+        if in_channels != out_channels or stride != 1:
             self.shortcut = nn.Sequential(
                 nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(out_channels)
@@ -86,21 +86,21 @@ class MatcherModel(nn.Module):
 
         # Stacked ResNet blocks - 400k - ok    
         
-        # model_output_channels = 256
+        model_output_channels = 256
 
-        # self.model = nn.Sequential(
-        #     ResNetBlock(32, 32),
-        #     ResNetBlock(32, 64, stride=1),
-        #     ResNetBlock(64, 64, stride=1),
-        #     ResNetBlock(64, 128, stride=2),
+        self.model = nn.Sequential(
+            ResNetBlock(32, 32),
+            ResNetBlock(32, 64, stride=1),
+            ResNetBlock(64, 64, stride=1),
+            ResNetBlock(64, 128, stride=2),
 
-        #     nn.Conv2d(128, model_output_channels, kernel_size=1, stride=1),
-        #     nn.BatchNorm2d(model_output_channels),
-        #     nn.ReLU(),
+            nn.Conv2d(128, model_output_channels, kernel_size=1, stride=1),
+            nn.BatchNorm2d(model_output_channels),
+            nn.ReLU(),
 
-        #     nn.AdaptiveMaxPool2d((1, 1)),
-        #     nn.Flatten(),
-        # )
+            nn.AdaptiveMaxPool2d((1, 1)),
+            nn.Flatten(),
+        )
 
         # Stacked ResNet blocks - 1mil - ok
 
@@ -141,23 +141,23 @@ class MatcherModel(nn.Module):
 
         # Stacked ResNet blocks - 10mil - ok
 
-        model_output_channels = 512
+        # model_output_channels = 512
 
-        self.model = nn.Sequential(
-            ResNetBlock(32, 32),
-            ResNetBlock(32, 64, stride=1),
-            ResNetBlock(64, 128, stride=2),
-            ResNetBlock(128, 256, stride=2),
-            ResNetBlock(256, 512, stride=2),
-            ResNetBlock(512, 1024, stride=2),
+        # self.model = nn.Sequential(
+        #     ResNetBlock(32, 32),
+        #     ResNetBlock(32, 64, stride=1),
+        #     ResNetBlock(64, 128, stride=2),
+        #     ResNetBlock(128, 256, stride=2),
+        #     ResNetBlock(256, 512, stride=2),
+        #     ResNetBlock(512, 1024, stride=2),
 
-            nn.Conv2d(1024, model_output_channels, kernel_size=1, stride=1),
-            nn.BatchNorm2d(model_output_channels),
-            nn.ReLU(),
+        #     nn.Conv2d(1024, model_output_channels, kernel_size=1, stride=1),
+        #     nn.BatchNorm2d(model_output_channels),
+        #     nn.ReLU(),
 
-            nn.AdaptiveMaxPool2d((1, 1)),
-            nn.Flatten(),
-        )
+        #     nn.AdaptiveMaxPool2d((1, 1)),
+        #     nn.Flatten(),
+        # )
 
         self.coords_head = nn.Sequential(
             nn.Linear(model_output_channels, 128),
