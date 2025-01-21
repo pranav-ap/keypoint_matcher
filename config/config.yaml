@@ -2,7 +2,7 @@ log_level: TRACE  # TRACE WARNING
 
 
 experiment:
-    model: finalnet
+    model: finalnet_resnet_deeper
     linux: 58
     params: 10mil
     heads: 2
@@ -15,7 +15,7 @@ task:
     video: MOO09_short_1_updown
     videos:
         train:
-            normal:
+            normal: # []
                 # Count : 16216
 
                 - MGO01_low_light  #  1097
@@ -30,14 +30,12 @@ task:
                 - MOO02_hand_puncher_2  #  1844
                 - MOO13_sudden_movements  #  2093
 
-            all: 
-                - MOO07_mapping_easy
-                # - MOO08_mapping_hard 
+            all: []
                 # - MGO07_mapping_easy 
                 # - MGO08_mapping_hard
 
         val:
-            normal: 
+            normal: # []
                 # Count : 4886
 
                 # - MOO09_short_1_updown #  12
@@ -57,13 +55,16 @@ task:
                 - MOO03_hand_shooter_easy #  950
                 - MGO03_hand_shooter_easy #  1055
 
-            all: 
-                - MOO09_short_1_updown
-                - MOO10_short_2_panorama
-                - MOO11_short_3_backandforth
+            all: []
+                # - MOO09_short_1_updown
+                # - MOO10_short_2_panorama
+                # - MOO11_short_3_backandforth
 
         test:
-            - Nothing
+            normal: []
+            all:
+                # - MOO07_mapping_easy
+                - MOO08_mapping_hard 
 
     cam: cam0
     cams:
@@ -102,7 +103,7 @@ image:
 train:
     train_batch_size: 2  #  4
     val_batch_size: 2  #  4
-    num_patches_per_image: 100
+    num_patches_per_image: 120
 
     fast_dev_run: False  # True False
     overfit_batches: 0

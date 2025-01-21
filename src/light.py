@@ -133,7 +133,7 @@ class Light(pl.LightningModule):
         coords_percent_2_pixel = self._compute_coords_accuracy_percentage(coords_pred, coords, pixels=2)
         coords_percent_1_pixel = self._compute_coords_accuracy_percentage(coords_pred, coords, pixels=1)
 
-        loss = coords_loss * 0.8 + conf_loss * 0.2 # + rotation_loss * 0.2
+        loss = coords_loss * 0.9 + conf_loss * 0.1 # + rotation_loss * 0.2
         # loss = coords_loss + conf_loss + rotation_loss
 
         # return loss, coords_loss, coords_pred, conf_loss, conf_pred, rotation_loss, rotation_pred, coords_percent_2_pixel, coords_percent_1_pixel
@@ -309,7 +309,7 @@ class Light(pl.LightningModule):
             save_last=True,
         )
 
-        progress_bar_callback = TQDMProgressBar(refresh_rate=200)
+        progress_bar_callback = TQDMProgressBar(refresh_rate=200) # 200  10
         lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
 
         summary_callback = ModelSummary(max_depth=1)
