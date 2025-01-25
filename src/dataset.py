@@ -86,17 +86,24 @@ class MatchesDataset(torch.utils.data.Dataset):
     def _setup_file(self):
         self._file_all = h5py.File(config.paths.matches.all, mode='r')
         self._file_normal = h5py.File(config.paths.matches.normal, mode='r')
+        self._file_blur= h5py.File(config.paths.matches.blur, mode='r')
 
         self.names = self._get_names()
 
     def _get_names(self):
         names = []
-        ds_types = ['normal', 'all']
+        ds_types = ['all', 'normal', 'blur']
 
         logger.info(f'Processing {self.stage}')
 
         for ds_type in ds_types:
-            f = self._file_all if ds_type == 'all' else self._file_normal
+            f = self._file_all 
+            
+            if ds_type == 'blur':
+                f = self._file_blur
+            elif ds_type == 'normal':
+                f = self._file_normal
+
             logger.info(f'Processing {ds_type}')
 
             for video in config.task.videos[self.stage][ds_type]:
@@ -338,8 +345,13 @@ class MatchesDataset(torch.utils.data.Dataset):
         config.task.video = video
         config.task.cam = cam
 
-        f = self._file_all if ds_type == 'all' else self._file_normal
-
+        f = self._file_all 
+        
+        if ds_type == 'blur':
+            f = self._file_blur
+        elif ds_type == 'normal':
+            f = self._file_normal
+            
         references_group = f[f'{config.task.video}/{config.task.cam}/reference_coords']
         targets_group = f[f'{config.task.video}/{config.task.cam}/target_coords']
 

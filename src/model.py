@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torchvision
 
 from config import config
 from utils import logger
@@ -72,9 +73,10 @@ class ResNetBlock(nn.Module):
 
 class MatcherModel(nn.Module):
     def __init__(self):
-        super().__init__()
+        super().__init__()  # frank
 
         self.positional_encoding = positionalencoding2d(32, height=32, width=32).unsqueeze(0).to(device)
+        self.positional_encoding2 = positionalencoding2d(256, height=32, width=32).unsqueeze(0).to(device)
 
         in_channels = 3 * 2 + 2
 
@@ -84,28 +86,32 @@ class MatcherModel(nn.Module):
             nn.ReLU(),
         )
 
-        # Stacked ResNet blocks - 10mil - finalnet_resnet_deeper
+        model_output_channels = 128 # 256 # 512
 
-        model_output_channels = 512
-
-        self.model = nn.Sequential(
+        self.model1 = nn.Sequential(
             ResNetBlock(32, 32, stride=1),
             ResNetBlock(32, 64, stride=1),
             
             ResNetBlock(64, 64, stride=1),
             ResNetBlock(64, 128, stride=1),
             
-            ResNetBlock(128, 128, stride=2),
-            ResNetBlock(128, 256, stride=2),
+            ResNetBlock(128, 128, stride=1),
+            ResNetBlock(128, 256, stride=1),
+        )
+        
+        self.model21 = nn.Sequential(
+            nn.Conv2d(256, 128, kernel_size=1, stride=1, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
 
-            ResNetBlock(256, 512, stride=2),
-            ResNetBlock(512, model_output_channels, stride=2),
-
-            # ResNetBlock(512, 1024, stride=2),
-
-            # nn.Conv2d(1024, model_output_channels, kernel_size=1, stride=1),
-            # nn.BatchNorm2d(model_output_channels),
-            # nn.ReLU(),
+            nn.AdaptiveMaxPool2d((1, 1)),
+            nn.Flatten(),
+        )
+        
+        self.model22 = nn.Sequential(
+            nn.Conv2d(256, 128, kernel_size=1, stride=1, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
 
             nn.AdaptiveMaxPool2d((1, 1)),
             nn.Flatten(),
@@ -113,10 +119,6 @@ class MatcherModel(nn.Module):
 
         self.coords_head = nn.Sequential(
             nn.Linear(model_output_channels, 128),
-            nn.BatchNorm1d(128),
-            nn.ReLU(),
-
-            nn.Linear(128, 128),
             nn.BatchNorm1d(128),
             nn.ReLU(),
 
@@ -159,11 +161,18 @@ class MatcherModel(nn.Module):
         x = x.to('cuda')
 
         x = x + self.positional_encoding
-        x = self.model(x)
+        x = self.model1(x)
         x = x.to('cuda')
 
-        coords = self.coords_head(x)
-        confidence = self.confidence_head(x)
+        x = x + self.positional_encoding2
+
+        x1 = self.model21(x)
+        x1 = x1.to('cuda')
+        coords = self.coords_head(x1)
+
+        x2 = self.model22(x)
+        x2 = x2.to('cuda')
+        confidence = self.confidence_head(x2)
 
         return coords, confidence
 
