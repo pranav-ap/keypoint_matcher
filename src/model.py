@@ -39,18 +39,61 @@ def positionalencoding2d(d_model, height, width):
     return pe
 
 
+def depthwise_separable_conv(in_channels, out_channels, kernel_size=3, stride=1, padding=1):
+    return nn.Sequential(
+        nn.Conv2d(in_channels, in_channels, kernel_size, stride, padding, groups=in_channels, bias=False),
+        nn.BatchNorm2d(in_channels),
+        nn.ReLU(),
+        nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0, bias=False),
+        nn.BatchNorm2d(out_channels),
+        nn.ReLU(),
+    )
+
+
 class ResNetBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super().__init__()
         
-        self.block = nn.Sequential(  # resnet
-            nn.BatchNorm2d(in_channels),
+        self.block = depthwise_separable_conv(in_channels, out_channels, stride=stride)
+
+        self.shortcut = None
+        if in_channels != out_channels or stride != 1:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(out_channels)
+            )
+
+    def forward(self, x):
+        identity = x
+        
+        if self.shortcut:
+            identity = self.shortcut(x)
+
+        out = self.block(x)
+        out = out + identity    
+
+        return out
+
+
+class BottleneckResNetBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1):
+        super().__init__()
+        
+        # Bottleneck layer: 1x1 convolution to reduce dimensions
+        self.bottleneck = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels // 4, kernel_size=1, stride=1, bias=False),
+            nn.BatchNorm2d(out_channels // 4),
             nn.ReLU(),
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False), 
-            
+        )
+        
+        # Depthwise separable convolution
+        self.block = depthwise_separable_conv(out_channels // 4, out_channels // 4, stride=stride)
+        
+        # Expansion layer: 1x1 convolution to restore dimensions
+        self.expansion = nn.Sequential(
+            nn.Conv2d(out_channels // 4, out_channels, kernel_size=1, stride=1, bias=False),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(),
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
         )
         
         self.shortcut = None
@@ -66,59 +109,57 @@ class ResNetBlock(nn.Module):
         if self.shortcut:
             identity = self.shortcut(x)
 
-        out = self.block(x)
-        out += identity        
+        out = self.bottleneck(x)
+        out = self.block(out)
+        out = self.expansion(out)
+        out = out + identity    
+
         return out
 
 
 class MatcherModel(nn.Module):
     def __init__(self):
-        super().__init__()  # frank
+        super().__init__()
 
-        self.positional_encoding = positionalencoding2d(32, height=32, width=32).unsqueeze(0).to(device)
-        self.positional_encoding2 = positionalencoding2d(256, height=32, width=32).unsqueeze(0).to(device)
+        in_channels = 3
+        in_channels = in_channels * 2 + 2
 
-        in_channels = 3 * 2 + 2
+        out_channels = 32
 
         self.feature_extractor = nn.Sequential(
-            nn.Conv2d(in_channels, 32, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(32),
+            nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(in_channels),
+            nn.ReLU(),
+
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(out_channels),
             nn.ReLU(),
         )
 
-        model_output_channels = 128 # 256 # 512
+        self.positional_encoding = positionalencoding2d(out_channels, height=32, width=32).unsqueeze(0).to(device)
 
-        self.model1 = nn.Sequential(
-            ResNetBlock(32, 32, stride=1),
-            ResNetBlock(32, 64, stride=1),
-            
-            ResNetBlock(64, 64, stride=1),
-            ResNetBlock(64, 128, stride=1),
-            
+        in_channels = out_channels
+        out_channels = 1024 # 256 512 1024
+
+        self.backbone = nn.Sequential(
+            ResNetBlock(in_channels, 128, stride=1),
             ResNetBlock(128, 128, stride=1),
+            ResNetBlock(128, 128, stride=2),
+
             ResNetBlock(128, 256, stride=1),
-        )
-        
-        self.model21 = nn.Sequential(
-            nn.Conv2d(256, 128, kernel_size=1, stride=1, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
+            ResNetBlock(256, 256, stride=1),
+            ResNetBlock(256, 256, stride=2),
 
-            nn.AdaptiveMaxPool2d((1, 1)),
-            nn.Flatten(),
+            BottleneckResNetBlock(256, 512, stride=1),
+            BottleneckResNetBlock(512, out_channels, stride=1),
+            BottleneckResNetBlock(out_channels, out_channels, stride=2),
         )
-        
-        self.model22 = nn.Sequential(
-            nn.Conv2d(256, 128, kernel_size=1, stride=1, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
 
-            nn.AdaptiveMaxPool2d((1, 1)),
-            nn.Flatten(),
-        )
+        self.global_pool = nn.AdaptiveMaxPool2d((1, 1))
+        self.flatten = nn.Flatten()
 
         self.coords_head = nn.Sequential(
-            nn.Linear(model_output_channels, 128),
+            nn.Linear(out_channels, 128),
             nn.BatchNorm1d(128),
             nn.ReLU(),
 
@@ -134,45 +175,22 @@ class MatcherModel(nn.Module):
             nn.Tanh(),
         )
 
-        self.confidence_head = nn.Sequential(
-            nn.Linear(model_output_channels, 128),
-            nn.BatchNorm1d(128),
-            nn.ReLU(),
-
-            nn.Linear(128, 64),
-            nn.BatchNorm1d(64),
-            nn.ReLU(),
-
-            nn.Linear(64, 32),
-            nn.BatchNorm1d(32),
-            nn.ReLU(),
-
-            nn.Linear(32, 1),
-            nn.Sigmoid(),
-        )
-
     def forward(self, reference_patches, target_patches, reference_coords):
-        reference_coords = reference_coords / 31.0
         height, width = reference_patches.shape[2], reference_patches.shape[3]
+
         reference_coords = reference_coords.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, height, width)
+        reference_coords = reference_coords / 31.0 
 
         combined = torch.cat([reference_patches, target_patches, reference_coords], dim=1)
         x = self.feature_extractor(combined)
-        x = x.to('cuda')
-
         x = x + self.positional_encoding
-        x = self.model1(x)
-        x = x.to('cuda')
 
-        x = x + self.positional_encoding2
+        x = self.backbone(x)
+        x = self.global_pool(x)
+        x = self.flatten(x)
 
-        x1 = self.model21(x)
-        x1 = x1.to('cuda')
-        coords = self.coords_head(x1)
+        coords = self.coords_head(x)
+        # confidence = self.confidence_head(x)
 
-        x2 = self.model22(x)
-        x2 = x2.to('cuda')
-        confidence = self.confidence_head(x2)
-
-        return coords, confidence
+        return coords #, confidence
 

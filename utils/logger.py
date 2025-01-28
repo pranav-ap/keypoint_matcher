@@ -63,7 +63,7 @@ class MyLogger:
 
         run = neptune.init_run(
             project=project,
-            source_files=['src'],
+            source_files=['src', 'config'],
             dependencies=f'{config.paths.roots.project}/environment.yaml',
         )
 

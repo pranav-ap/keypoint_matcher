@@ -2,11 +2,11 @@ log_level: TRACE  # TRACE WARNING
 
 
 experiment:
-    model: frank
-    linux: 76
-    params: 2mil
-    heads: 2
-    datasets: overfit_all_mo7
+    model: fanta
+    linux: 50
+    params: 4mil
+    heads: 1
+    datasets: normal
     stddev: 4
     name: ${experiment.model}_${experiment.linux}_linux_${experiment.params}_${experiment.heads}_heads_${experiment.datasets}_dataset_${experiment.stddev}_stddev
 
@@ -16,23 +16,23 @@ task:
     video: MOO09_short_1_updown
     videos:
         train:
-            normal: []
+            normal:  # []
                 # Count : 16216
 
-                # - MGO01_low_light  #  1097
-                # - MOO06_inspect_hard  #  1111
-                # - MOO01_hand_puncher_1  #  1218
-                # - MGO06_inspect_hard  #  1279
-                # - MOO14_flickering_light  #  1422
-                # - MGO04_hand_shooter_hard  #  1474
-                # - MGO13_sudden_movements  #  1491
-                # - MOO04_hand_shooter_hard  #  1563
-                # - MGO02_hand_puncher  #  1624
-                # - MOO02_hand_puncher_2  #  1844
-                # - MOO13_sudden_movements  #  2093
-
+                - MGO01_low_light  #  1097
+                - MOO06_inspect_hard  #  1111
+                - MOO01_hand_puncher_1  #  1218
+                - MGO06_inspect_hard  #  1279
+                - MOO14_flickering_light  #  1422
+                - MGO04_hand_shooter_hard  #  1474
+                - MGO13_sudden_movements  #  1491
+                - MOO04_hand_shooter_hard  #  1563
+                - MGO02_hand_puncher  #  1624
+                - MOO02_hand_puncher_2  #  1844
+                - MOO13_sudden_movements  #  2093
+                
             blur: []
-           
+
                 # - MGO01_low_light  
                 # - MOO06_inspect_hard  
                 # - MOO01_hand_puncher_1  
@@ -45,12 +45,12 @@ task:
                 # - MOO02_hand_puncher_2  
                 # - MOO13_sudden_movements  
 
-            all: # []
-                - MGO07_mapping_easy 
+            all: []
+                # - MGO07_mapping_easy 
                 # - MGO08_mapping_hard
             
         val:
-            normal: []
+            normal:  # []
                 # Count : 4886
 
                 # - MOO09_short_1_updown #  12
@@ -60,17 +60,17 @@ task:
                 # - MGO11_short_3_backandforth #  82
                 # - MOO11_short_3_backandforth #  82
 
-                # - MOO07_mapping_easy #  178
-                # - MOO08_mapping_hard #  203
-                # - MGO08_mapping_hard #  221
-                # - MGO07_mapping_easy #  293
-                # - MOO05_inspect_easy #  371
-                # - MGO05_inspect_easy #  530
-                # - MGO14_flickering_light #  810
-                # - MOO03_hand_shooter_easy #  950
-                # - MGO03_hand_shooter_easy #  1055
+                - MOO07_mapping_easy #  178
+                - MOO08_mapping_hard #  203
+                - MGO08_mapping_hard #  221
+                - MGO07_mapping_easy #  293
+                - MOO05_inspect_easy #  371
+                - MGO05_inspect_easy #  530
+                - MGO14_flickering_light #  810
+                - MOO03_hand_shooter_easy #  950
+                - MGO03_hand_shooter_easy #  1055
 
-            blur: []
+            blur:  []
                 # - MOO09_short_1_updown
                 # - MGO09_short_1_updown
                 # - MGO10_short_2_panorama
@@ -88,17 +88,16 @@ task:
                 # - MOO03_hand_shooter_easy
                 # - MGO03_hand_shooter_easy
 
-            all: # []
+            all: []
                 # - MOO09_short_1_updown
                 # - MOO10_short_2_panorama
                 # - MOO11_short_3_backandforth
 
-                - MGO07_mapping_easy 
         test:
             normal: []
-            all:
+            all: []
                 # - MOO07_mapping_easy
-                - MOO08_mapping_hard 
+                # - MOO08_mapping_hard 
 
     cam: cam0
     cams:
@@ -133,12 +132,12 @@ image:
     # [width, height]
     original_image_shape: [640, 480]  # [640, 480]
     patch_size: 32
-    patch_border: 2 # pixels 2 4
+    patch_border: 4 # pixels 2 4
  
 train:
-    train_batch_size: 2  #  4
-    val_batch_size: 2  #  4
-    num_patches_per_image: 120
+    train_batch_size: 4  # 2  4
+    val_batch_size: 4 
+    num_patches_per_image: 60 # 120
 
     fast_dev_run: False  # True False
     overfit_batches: 0

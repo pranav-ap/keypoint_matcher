@@ -33,10 +33,6 @@ def min_max_normalize(tensor, min_val=0.0, max_val=1.0):
     normalized_tensor = (tensor - tensor_min) / (tensor_max - tensor_min)
     normalized_tensor = normalized_tensor * (max_val - min_val) + min_val
     return normalized_tensor
-    
-# denormalize = T.Compose([
-#     T.Normalize(mean=[-0.5 / 0.5], std=[1 / 0.5]),
-# ])
 
 
 def get_tensor_grid(pil_image):
@@ -98,7 +94,7 @@ def show_batch(
 
     def prepare_patch(patch, x, y, color):
         # patch = denormalize(patch)
-        # patch = min_max_normalize(patch, min_val=0.0, max_val=1.0) 
+        patch = min_max_normalize(patch, min_val=0.0, max_val=1.0) 
         patch = to_pil(patch)
 
         if patch.mode != "RGB":
@@ -116,7 +112,7 @@ def show_batch(
 
     def prepare_target_patch(patch, x, y, a, b, rot=None):
         # patch = denormalize(patch)
-        # patch = min_max_normalize(patch, min_val=0.0, max_val=1.0)  
+        patch = min_max_normalize(patch, min_val=0.0, max_val=1.0)  
         patch = to_pil(patch)
 
         if patch.mode != "RGB":
