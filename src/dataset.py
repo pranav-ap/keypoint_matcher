@@ -145,7 +145,7 @@ class MatchesDataset(torch.utils.data.Dataset):
     @staticmethod
     def _get_image(image_name):
         image_path = os.path.join(config.paths.images, f'{image_name}.png')
-        mode = 'RGB'
+        mode = 'L' # 'RGB'
         image = Image.open(image_path).convert(mode)
         return image
 
@@ -240,7 +240,7 @@ class MatchesDataset(torch.utils.data.Dataset):
 
             if self.patch_normalize:
                 patch = self.patch_normalize(patch)
-                patch = min_max_normalize(patch, min_val=0.0, max_val=1.0) 
+                # patch = min_max_normalize(patch, min_val=0.0, max_val=1.0) 
 
             patches.append(patch)
             patch_level_coords.append(keypoint)
@@ -327,7 +327,7 @@ class MatchesDataset(torch.utils.data.Dataset):
 
             if self.patch_normalize:
                 patch = self.patch_normalize(patch)
-                patch = min_max_normalize(patch, min_val=0.0, max_val=1.0) 
+                # patch = min_max_normalize(patch, min_val=0.0, max_val=1.0) 
 
             patches.append(patch)
             patch_level_coords.append(keypoint)
@@ -423,12 +423,17 @@ class MatchesDataModule(L.LightningDataModule):
             ]
         )
 
+        # self.patch_normalize = T.Compose([
+        #     T.ToTensor(),
+        #     T.Normalize(
+        #         mean=[0.485, 0.456, 0.406],
+        #         std=[0.229, 0.224, 0.225]
+        #     ),
+        # ])
+
         self.patch_normalize = T.Compose([
             T.ToTensor(),
-            # T.Normalize(
-            #     mean=[0.485, 0.456, 0.406],
-            #     std=[0.229, 0.224, 0.225]
-            # ),
+            T.Normalize(mean=[0.5], std=[0.5]),
         ])
 
         self.dataset: Dict[str, MatchesDataset] = {}

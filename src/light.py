@@ -21,7 +21,7 @@ class Light(pl.LightningModule):
         self.tensorboard_logger = tensorboard_logger
 
         self.model = MatcherModel()
-        # self.model = self.model.to('cuda')
+        self.model = self.model.to('cuda')
 
         self.learning_rate = config.train.learning_rate
         self.mae = torchmetrics.MeanAbsoluteError()
@@ -45,12 +45,6 @@ class Light(pl.LightningModule):
         )
 
         return pred
-
-    def _compute_pixel_penalty(pred, target, threshold=2):
-        scaled_pred = (pred + 1) * 15.5
-        diff = torch.abs(scaled_pred - target)
-        penalty = torch.where(diff > threshold, diff - threshold, torch.zeros_like(diff))
-        return penalty.mean()
         
     @staticmethod
     def _compute_coords_loss(pred, target):
@@ -58,16 +52,12 @@ class Light(pl.LightningModule):
         scaled_target = target.float() / 15.5 - 1  
 
         # MSE Loss
-        # loss = F.mse_loss(pred, scaled_target)
+        loss = F.mse_loss(pred, scaled_target)
 
         # L1 Loss
-        loss = F.l1_loss(pred, scaled_target)
-
+        # loss = F.l1_loss(pred, scaled_target)
 
         return loss
-
-        # pixel_penalty = _compute_pixel_penalty(pred, target, threshold=2)
-        # return loss + 0.1 * pixel_penalty  # Adjust weight as needed
 
     @staticmethod
     def _compute_coords_accuracy_percentage(pred, target, pixels=1):
@@ -157,6 +147,7 @@ class Light(pl.LightningModule):
         coords_percent_1_pixel = self._compute_coords_accuracy_percentage(coords_pred, coords, pixels=1)
 
         loss = coords_loss
+        # loss = coords_loss * 0.8 + (coords_percent_1_pixel / 100) * 0.2
         # loss = coords_loss * 0.8 + conf_loss * 0.2 # + rotation_loss * 0.2
         # loss = coords_loss + conf_loss + rotation_loss
 
@@ -343,7 +334,7 @@ class Light(pl.LightningModule):
             save_last=True,
         )
 
-        progress_bar_callback = TQDMProgressBar(refresh_rate=200) # 200  10
+        progress_bar_callback = TQDMProgressBar(refresh_rate=200) 
         lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
 
         summary_callback = ModelSummary(max_depth=1)

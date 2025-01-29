@@ -9,11 +9,15 @@ plt.style.use('seaborn-v0_8-whitegrid')
 to_tensor = T.ToTensor()
 to_pil = T.ToPILImage()
 
+# denormalize = T.Compose([
+#     T.Normalize(
+#         mean=[-0.485 / 0.229, -0.456 / 0.224, -0.406 / 0.225],
+#         std=[1 / 0.229, 1 / 0.224, 1 / 0.225]
+#     )
+# ])
+
 denormalize = T.Compose([
-    T.Normalize(
-        mean=[-0.485 / 0.229, -0.456 / 0.224, -0.406 / 0.225],
-        std=[1 / 0.229, 1 / 0.224, 1 / 0.225]
-    )
+    T.Normalize(mean=[-0.5 / 0.5], std=[1 / 0.5])
 ])
 
 
@@ -93,8 +97,8 @@ def show_batch(
     combined_image = Image.new('RGB', (combined_width, combined_height), color=(255, 255, 255))
 
     def prepare_patch(patch, x, y, color):
-        # patch = denormalize(patch)
-        patch = min_max_normalize(patch, min_val=0.0, max_val=1.0) 
+        patch = denormalize(patch)
+        # patch = min_max_normalize(patch, min_val=0.0, max_val=1.0) 
         patch = to_pil(patch)
 
         if patch.mode != "RGB":
@@ -111,8 +115,8 @@ def show_batch(
         return patch
 
     def prepare_target_patch(patch, x, y, a, b, rot=None):
-        # patch = denormalize(patch)
-        patch = min_max_normalize(patch, min_val=0.0, max_val=1.0)  
+        patch = denormalize(patch)
+        # patch = min_max_normalize(patch, min_val=0.0, max_val=1.0)  
         patch = to_pil(patch)
 
         if patch.mode != "RGB":

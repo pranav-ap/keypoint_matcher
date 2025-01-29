@@ -54,7 +54,16 @@ class ResNetBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super().__init__()
         
-        self.block = depthwise_separable_conv(in_channels, out_channels, stride=stride)
+        # self.block = depthwise_separable_conv(in_channels, out_channels, stride=stride)
+        self.block = nn.Sequential(
+            nn.BatchNorm2d(in_channels),
+            nn.ReLU(),
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False), 
+            
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(),
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
+        )
 
         self.shortcut = None
         if in_channels != out_channels or stride != 1:
@@ -121,16 +130,12 @@ class MatcherModel(nn.Module):
     def __init__(self):
         super().__init__()
 
-        in_channels = 3
+        in_channels = 1 # 3
         in_channels = in_channels * 2 + 2
 
         out_channels = 32
 
         self.feature_extractor = nn.Sequential(
-            nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(in_channels),
-            nn.ReLU(),
-
             nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(),
@@ -139,20 +144,13 @@ class MatcherModel(nn.Module):
         self.positional_encoding = positionalencoding2d(out_channels, height=32, width=32).unsqueeze(0).to(device)
 
         in_channels = out_channels
-        out_channels = 1024 # 256 512 1024
+        out_channels = 512 # 256 512 1024
 
         self.backbone = nn.Sequential(
-            ResNetBlock(in_channels, 128, stride=1),
-            ResNetBlock(128, 128, stride=1),
-            ResNetBlock(128, 128, stride=2),
-
+            ResNetBlock(in_channels, 64, stride=1),
+            ResNetBlock(64, 128, stride=1),
             ResNetBlock(128, 256, stride=1),
-            ResNetBlock(256, 256, stride=1),
-            ResNetBlock(256, 256, stride=2),
-
-            BottleneckResNetBlock(256, 512, stride=1),
-            BottleneckResNetBlock(512, out_channels, stride=1),
-            BottleneckResNetBlock(out_channels, out_channels, stride=2),
+            ResNetBlock(256, out_channels, stride=2),
         )
 
         self.global_pool = nn.AdaptiveMaxPool2d((1, 1))
@@ -177,13 +175,16 @@ class MatcherModel(nn.Module):
 
     def forward(self, reference_patches, target_patches, reference_coords):
         height, width = reference_patches.shape[2], reference_patches.shape[3]
-
         reference_coords = reference_coords.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, height, width)
         reference_coords = reference_coords / 31.0 
 
         combined = torch.cat([reference_patches, target_patches, reference_coords], dim=1)
+        combined = combined.to(device)
+
         x = self.feature_extractor(combined)
         x = x + self.positional_encoding
+        
+        x = x.to(device)
 
         x = self.backbone(x)
         x = self.global_pool(x)
