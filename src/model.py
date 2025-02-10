@@ -150,6 +150,7 @@ class MatcherModel(nn.Module):
             ResNetBlock(in_channels, 64, stride=1),
             ResNetBlock(64, 128, stride=1),
             ResNetBlock(128, 256, stride=1),
+
             ResNetBlock(256, out_channels, stride=2),
         )
 

@@ -85,7 +85,7 @@ def show_batch(
 
     patch_size = 128
     extra_col_gap = 0
-    radius = 4
+    radius = 1
 
     gap_for_text = 25
 

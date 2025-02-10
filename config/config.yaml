@@ -2,8 +2,8 @@ log_level: TRACE  # TRACE WARNING
 
 
 experiment:
-    model: wed_shankar
-    linux: 57
+    model: thur_lotus
+    linux: 75
     params: 5mil
     heads: 1
     datasets: mix
@@ -16,7 +16,7 @@ task:
     video: MOO09_short_1_updown
     videos:
         train:
-            normal:  []
+            normal: []
                 # Count : 16216
 
                 # - MGO01_low_light  #  1097
@@ -31,12 +31,12 @@ task:
                 # - MOO02_hand_puncher_2  #  1844
                 # - MOO13_sudden_movements  #  2093
                 
-            blur: # []
+            blur: []
 
-                - MGO01_low_light  
-                - MOO06_inspect_hard  
-                - MOO01_hand_puncher_1  
-                - MGO06_inspect_hard  
+                # - MGO01_low_light  
+                # - MOO06_inspect_hard  
+                # - MOO01_hand_puncher_1  
+                # - MGO06_inspect_hard  
                 # - MOO14_flickering_light  
                 # - MGO04_hand_shooter_hard  
                 # - MGO13_sudden_movements  
@@ -45,12 +45,15 @@ task:
                 # - MOO02_hand_puncher_2  
                 # - MOO13_sudden_movements  
 
-            all: # []
-                - MGO07_mapping_easy 
-                - MGO08_mapping_hard
+            all:  []
+                # - MGO07_mapping_easy 
+                # - MGO08_mapping_hard
+            
+            all_missing:
+                - MOO07_mapping_easy
             
         val:
-            normal:  []
+            normal: []
                 # Count : 4886
 
                 # - MOO09_short_1_updown #  12
@@ -70,7 +73,7 @@ task:
                 # - MOO03_hand_shooter_easy #  950
                 # - MGO03_hand_shooter_easy #  1055
 
-            blur:  # []
+            blur:  []
                 # - MOO09_short_1_updown
                 # - MGO09_short_1_updown
                 # - MGO10_short_2_panorama
@@ -78,20 +81,23 @@ task:
                 # - MGO11_short_3_backandforth
                 # - MOO11_short_3_backandforth
 
-                - MOO07_mapping_easy
-                - MOO08_mapping_hard
-                - MGO08_mapping_hard
-                - MGO07_mapping_easy
-                - MOO05_inspect_easy
-                - MGO05_inspect_easy
-                - MGO14_flickering_light
+                # - MOO07_mapping_easy
+                # - MOO08_mapping_hard
+                # - MGO08_mapping_hard
+                # - MGO07_mapping_easy
+                # - MOO05_inspect_easy
+                # - MGO05_inspect_easy
+                # - MGO14_flickering_light
                 # - MOO03_hand_shooter_easy
                 # - MGO03_hand_shooter_easy
 
-            all: # []
-                - MOO09_short_1_updown
-                - MOO10_short_2_panorama
-                - MOO11_short_3_backandforth
+            all:  []
+                # - MOO09_short_1_updown
+                # - MOO10_short_2_panorama
+                # - MOO11_short_3_backandforth
+
+            all_missing:
+                - MOO07_mapping_easy
 
         test:
             normal: []
@@ -125,19 +131,22 @@ paths:
         all: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_all/train/train_data.hdf5
         normal: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_normal/train/train_data.hdf5
         blur: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_blur/train/train_data.hdf5
+        all_missing: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_all_missing/train/train_data.hdf5
 
     images: ${paths.roots.mav}/${task.cam}/data
 
 image:
     # [width, height]
     original_image_shape: [640, 480]  # [640, 480]
-    patch_size: 32
-    patch_border: 2 # pixels 2 4
- 
+    crop_image_shape: [ 630, 476 ] # [504, 504] [630, 476]
+    patch_size: 128
+    patch_border: 6 # pixels 2 4
+    
+
 train:
-    train_batch_size: 2  # 2  4
-    val_batch_size: 2 
-    num_patches_per_image: 60 # 120
+    train_batch_size: 5  # 2 3 4
+    val_batch_size: 5 
+    num_patches_per_image: 70 # 120
 
     fast_dev_run: False  # True False
     overfit_batches: 0
