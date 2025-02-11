@@ -50,7 +50,7 @@ def show_batch(
     patch_level_target_coords, patch_level_target_coords_true, 
     
     rotations_true=None, rotations=None, 
-    confidence_pred=None,
+    confidences_true=None, confidence_pred=None,
 
     limit_count=None, border_size=2, border_color="white", n_columns=2,
     just_gt=False,
@@ -152,6 +152,7 @@ def show_batch(
 
         rotation_true = f"{rotations_true[i].item():.2f}°" if rotations_true is not None else '-'
         rotation = f"{rotations[i].item():.2f}°" if rotations is not None else '-'
+        conf_true = f"{confidences_true[i].item():.2f}" if confidences_true is not None else '-'
         conf = f"{confidence_pred[i].item():.2f}" if confidence_pred is not None else '-'
 
         target_patch = target_patches[i]
@@ -179,6 +180,7 @@ def show_batch(
         text_x = x2 - 5 + patch_size // 2
         text_y = y + patch_size + 2 * border_size + 10  
         
-        draw.text((text_x, text_y), f"{rotation}, {conf}", fill="black", anchor="mm", font=font)
+        # draw.text((text_x, text_y), f"{rotation}, {conf}, {conf_true}", fill="black", anchor="mm", font=font)
+        draw.text((text_x, text_y), f"{conf}, {conf_true}", fill="black", anchor="mm", font=font)
         
     return combined_image

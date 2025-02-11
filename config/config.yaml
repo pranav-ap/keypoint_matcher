@@ -108,7 +108,9 @@ task:
     cam: cam0
     cams:
         - cam0
-        - cam1
+        # - cam1
+        # - cam2
+        # - cam3
 
     eda_mode: False  # True False
 
@@ -139,13 +141,13 @@ image:
     # [width, height]
     original_image_shape: [640, 480]  # [640, 480]
     crop_image_shape: [ 630, 476 ] # [504, 504] [630, 476]
-    patch_size: 128
+    patch_size: 82  # 82  128  64
     patch_border: 6 # pixels 2 4
     
 
 train:
-    train_batch_size: 5  # 2 3 4
-    val_batch_size: 5 
+    train_batch_size: 100  # 2 3 4
+    val_batch_size: 100
     num_patches_per_image: 70 # 120
 
     fast_dev_run: False  # True False

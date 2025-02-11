@@ -31,17 +31,19 @@ def crop_image_alb(image: Image.Image, keypoint, left, upper, right, lower, patc
 
 
 def match_collate_fn(batch):
-    ref_patches, ref_keypoints, tar_patches, tar_keypoints = zip(*batch)
+    ref_patches, ref_keypoints, tar_patches, tar_keypoints, certainties = zip(*batch)
 
     # Convert keypoints from list of tuples to tensor
     ref_keypoints = torch.tensor(ref_keypoints, dtype=torch.float32)
     tar_keypoints = torch.tensor(tar_keypoints, dtype=torch.float32)
+    certainties = torch.tensor(certainties, dtype=torch.float32)
 
     return (
         torch.cat(ref_patches, dim=0), 
         ref_keypoints, 
         torch.cat(tar_patches, dim=0), 
-        tar_keypoints
+        tar_keypoints,
+        certainties
     )
 
 
@@ -115,8 +117,8 @@ class MatchesDataset(torch.utils.data.Dataset):
                         warp = warp_dataset[()]
                         cert = cert_dataset[()]
 
-                        assert warp.shape == (128, 128, 4)
-                        assert cert.shape == (128, 128)
+                        assert warp.shape == (config.image.patch_size, config.image.patch_size, 4), f'{warp.shape=}'
+                        assert cert.shape == (config.image.patch_size, config.image.patch_size), f'{cert.shape=}'
 
                         missed_kps_csv_path = f"/home/stud/ath/ath_ws/datasets/track_debug/{video}/{cam}/{image_name_a}_incoming_missed_kps.csv"
 
@@ -324,7 +326,20 @@ class MatchesDataset(torch.utils.data.Dataset):
         ref_patch, ref_keypoint = self._prepare_patch(image_name_a, x, y)
         tar_patch, tar_keypoint = self._prepare_patch(image_name_b, x_guess, y_guess)
 
-        return ref_patch, ref_keypoint, tar_patch, tar_keypoint
+        x, y = ref_keypoint
+
+        y0 = int(y)
+        x0 = int(x)
+
+        certainty = cert[y0, x0]
+
+        x0, y0, x1, y1 = pixel_coords[y0, x0]
+        x1, y1 = x1.item(), y1.item()
+
+        ref_keypoint = (x0, y0)
+        tar_keypoint = (x1, y1)
+
+        return ref_patch, ref_keypoint, tar_patch, tar_keypoint, certainty
 
     def __getitem__(self, idx):
         if not hasattr(self, '_file_all_missing'):
@@ -332,9 +347,9 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         assert hasattr(self, '_file_all_missing')
 
-        ref_patch, ref_keypoint, tar_patch, tar_keypoint = self._prepare_image(idx)
+        ref_patch, ref_keypoint, tar_patch, tar_keypoint, certainty = self._prepare_image(idx)
         
-        return ref_patch, ref_keypoint, tar_patch, tar_keypoint
+        return ref_patch, ref_keypoint, tar_patch, tar_keypoint, certainty
 
 
 class MatchesDataModule(L.LightningDataModule):

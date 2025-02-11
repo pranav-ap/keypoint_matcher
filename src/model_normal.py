@@ -141,7 +141,7 @@ class MatcherModel(nn.Module):
             nn.ReLU(),
         )
 
-        self.positional_encoding = positionalencoding2d(out_channels, height=config.image.patch_size, width=config.image.patch_size).unsqueeze(0).to(device)
+        self.positional_encoding = positionalencoding2d(out_channels, height=32, width=32).unsqueeze(0).to(device)
 
         in_channels = out_channels
         out_channels = 512 # 256 512 1024
@@ -173,33 +173,18 @@ class MatcherModel(nn.Module):
             nn.Linear(32, 2),
             nn.Tanh(),
         )
-        
-        self.confidence_head = nn.Sequential(
-            nn.Linear(out_channels, 128),
-            nn.BatchNorm1d(128),
-            nn.ReLU(),
-
-            nn.Linear(128, 64),
-            nn.BatchNorm1d(64),
-            nn.ReLU(),
-
-            nn.Linear(64, 32),
-            nn.BatchNorm1d(32),
-            nn.ReLU(),
-
-            nn.Linear(32, 1),
-            # nn.Sigmoid(),
-        )
 
     def forward(self, reference_patches, target_patches, reference_coords):
         height, width = reference_patches.shape[2], reference_patches.shape[3]
         reference_coords = reference_coords.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, height, width)
-        reference_coords = reference_coords / (config.image.patch_size - 1) # 31.0 127.0
+        reference_coords = reference_coords / 31.0 
 
-        combined = torch.cat([reference_patches, target_patches, reference_coords], dim=1).to(device)
+        combined = torch.cat([reference_patches, target_patches, reference_coords], dim=1)
+        combined = combined.to(device)
 
         x = self.feature_extractor(combined)
         x = x + self.positional_encoding
+        
         x = x.to(device)
 
         x = self.backbone(x)
@@ -207,7 +192,7 @@ class MatcherModel(nn.Module):
         x = self.flatten(x)
 
         coords = self.coords_head(x)
-        confidence = self.confidence_head(x)
+        # confidence = self.confidence_head(x)
 
-        return coords, confidence
+        return coords #, confidence
 
