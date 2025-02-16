@@ -2,13 +2,15 @@ log_level: TRACE  # TRACE WARNING
 
 
 experiment:
-    model: thur_lotus
-    linux: 75
-    params: 5mil
-    heads: 1
+    # sun_space sat_grace friday_bobby
+    model: sun_water 
+    linux: 50
+    params: 8mil
+    heads: 2
     datasets: mix
     stddev: 4
-    name: ${experiment.model}_${experiment.linux}_linux_${experiment.params}_${experiment.heads}_heads_${experiment.datasets}_dataset_${experiment.stddev}_stddev
+    # name: ${experiment.model}_${experiment.linux}_linux_${experiment.params}_${experiment.heads}_heads_${experiment.datasets}_dataset_${experiment.stddev}_stddev
+    name: ${experiment.model}_${experiment.linux}_linux_${experiment.params}_${experiment.heads}_heads_${experiment.datasets}_dataset
 
 task:
     dataset: monado_slam
@@ -50,7 +52,9 @@ task:
                 # - MGO08_mapping_hard
             
             all_missing:
-                - MOO07_mapping_easy
+                - MOO07_mapping_easy 
+                # - MOO09_short_1_updown 
+                # - MOO10_short_2_panorama 
             
         val:
             normal: []
@@ -97,7 +101,11 @@ task:
                 # - MOO11_short_3_backandforth
 
             all_missing:
-                - MOO07_mapping_easy
+                - MOO07_mapping_easy 
+                # - MOO08_mapping_hard 
+
+                # - MOO09_short_1_updown 
+                # - MOO10_short_2_panorama 
 
         test:
             normal: []
@@ -108,7 +116,7 @@ task:
     cam: cam0
     cams:
         - cam0
-        # - cam1
+        - cam1
         # - cam2
         # - cam3
 
@@ -142,12 +150,13 @@ image:
     original_image_shape: [640, 480]  # [640, 480]
     crop_image_shape: [ 630, 476 ] # [504, 504] [630, 476]
     patch_size: 82  # 82  128  64
-    patch_border: 6 # pixels 2 4
+    train_patch_size: 82  
+    patch_border: 6 # pixels 2 4 6
     
 
 train:
-    train_batch_size: 100  # 2 3 4
-    val_batch_size: 100
+    train_batch_size: 10  
+    val_batch_size: 10
     num_patches_per_image: 70 # 120
 
     fast_dev_run: False  # True False
@@ -157,8 +166,8 @@ train:
     max_epochs: 200
     check_val_every_n_epoch: 2
     num_sanity_val_steps: 1
-    log_every_n_steps: 100
-    accumulate_grad_batches: 1
+    log_every_n_steps: 5 # 100
+    accumulate_grad_batches: 8
     learning_rate: 1e-4 # 1e-4    
 
 val:

@@ -1,7 +1,9 @@
+from config import config 
 import math
 import torch
 import matplotlib.pyplot as plt
 import torchvision.transforms as T
+import torch.nn.functional as F
 from PIL import Image, ImageOps, ImageDraw, ImageFont
 
 plt.style.use('seaborn-v0_8-whitegrid')
@@ -79,11 +81,11 @@ def show_batch(
         rotations = rotations * (180 / torch.pi) 
 
     try:
-        font = ImageFont.truetype("arial.ttf", 20) 
+        font = ImageFont.truetype("arial.ttf", 14) #  20
     except IOError:
         font = ImageFont.load_default() 
 
-    patch_size = 128
+    patch_size = config.image.patch_size # 128  82
     extra_col_gap = 0
     radius = 4
 
@@ -96,9 +98,14 @@ def show_batch(
 
     combined_image = Image.new('RGB', (combined_width, combined_height), color=(255, 255, 255))
 
+    confs = None
+    if confidence_pred is not None:
+        # confs = F.sigmoid(confidence_pred)
+        confs = confidence_pred
+
     def prepare_patch(patch, x, y, color):
-        patch = denormalize(patch)
-        # patch = min_max_normalize(patch, min_val=0.0, max_val=1.0) 
+        # patch = denormalize(patch)
+        patch = min_max_normalize(patch, min_val=0.0, max_val=1.0) 
         patch = to_pil(patch)
 
         if patch.mode != "RGB":
@@ -115,8 +122,8 @@ def show_batch(
         return patch
 
     def prepare_target_patch(patch, x, y, a, b, rot=None):
-        patch = denormalize(patch)
-        # patch = min_max_normalize(patch, min_val=0.0, max_val=1.0)  
+        # patch = denormalize(patch)
+        patch = min_max_normalize(patch, min_val=0.0, max_val=1.0)  
         patch = to_pil(patch)
 
         if patch.mode != "RGB":
@@ -126,18 +133,6 @@ def show_batch(
         
         if not just_gt:
             draw_im.ellipse((x - radius, y - radius, x + radius, y + radius), outline='yellow')
-
-            # Compute the endpoints for the line
-            # length = 4
-
-            # radians = math.radians(float(rot))
-
-            # x1 = x - length * math.sin(radians)
-            # y1 = y + length * math.cos(radians)
-            # x2 = x + length * math.sin(radians)
-            # y2 = y - length * math.cos(radians)
-
-            # draw_im.line([(x1, y1), (x2, y2)], fill="green", width=1)
 
         draw_im.rectangle((a - radius - 1, b - radius - 1, a + radius + 1, b + radius + 1), outline='green')
 
@@ -153,7 +148,7 @@ def show_batch(
         rotation_true = f"{rotations_true[i].item():.2f}°" if rotations_true is not None else '-'
         rotation = f"{rotations[i].item():.2f}°" if rotations is not None else '-'
         conf_true = f"{confidences_true[i].item():.2f}" if confidences_true is not None else '-'
-        conf = f"{confidence_pred[i].item():.2f}" if confidence_pred is not None else '-'
+        conf = f"{confs[i].item():.2f}" if confidence_pred is not None else '-'
 
         target_patch = target_patches[i]
         x, y = patch_level_target_coords[i]
@@ -175,12 +170,12 @@ def show_batch(
 
         text_x = x1 + patch_size // 2
         text_y = y + patch_size + 2 * border_size + 10  
-        draw.text((text_x, text_y), f"{rotation_true}", fill="black", anchor="mm", font=font)
+        # draw.text((text_x, text_y), f"{rotation_true}", fill="black", anchor="mm", font=font)
 
         text_x = x2 - 5 + patch_size // 2
         text_y = y + patch_size + 2 * border_size + 10  
         
         # draw.text((text_x, text_y), f"{rotation}, {conf}, {conf_true}", fill="black", anchor="mm", font=font)
-        draw.text((text_x, text_y), f"{conf}, {conf_true}", fill="black", anchor="mm", font=font)
+        draw.text((text_x, text_y), f"P {conf}, T {conf_true}", fill="black", anchor="mm", font=font)
         
     return combined_image

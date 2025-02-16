@@ -6,7 +6,7 @@ from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, Mode
 from neptune.types import File
 
 from config import config
-from utils import show_batch, get_tensor_grid
+from utils import show_batch, get_tensor_grid, logger
 from .model import MatcherModel
 
 torch.set_float32_matmul_precision('medium')
@@ -50,7 +50,7 @@ class Light(pl.LightningModule):
     @staticmethod
     def _compute_coords_accuracy_percentage(pred, target, pixels=1):
         # Scale pred from [-1, 1] to [0, 31]
-        scaled_pred = (pred.float() + 1) * ((config.image.patch_size - 1) / 2) # 15.5 
+        scaled_pred = (pred.float() + 1) * ((config.image.train_patch_size - 1) / 2) # 15.5 
         
         difference = torch.abs(scaled_pred - target)
 
@@ -64,8 +64,8 @@ class Light(pl.LightningModule):
     @staticmethod
     def _compute_coords_loss(pred, target):
         # Scale targets to [-1, 1]
-        scaled_target = target.float() / ((config.image.patch_size - 1) / 2) - 1  
-
+        scaled_target = target.float() / ((config.image.train_patch_size - 1) / 2) - 1  
+        
         # MSE Loss
         loss = F.mse_loss(pred, scaled_target)
 
@@ -75,15 +75,14 @@ class Light(pl.LightningModule):
         return loss
 
     @staticmethod
-    def _compute_confidence_loss(logits_pred, confidences):
-        loss = F.binary_cross_entropy_with_logits(logits_pred.squeeze(1), confidences)
+    def _compute_confidence_loss(logits_pred, confidences, cert):
+        # loss = F.binary_cross_entropy_with_logits(logits_pred, cert)
+        # loss = F.binary_cross_entropy_with_logits(logits_pred.squeeze(1), confidences)
+        loss = F.mse_loss(logits_pred.squeeze(1), confidences)
         return loss
 
     def _shared_step(self, batch):
-        ref_patches, ref_keypoints, tar_patches, tar_keypoints, confidences = batch
-
-        ref_patches = ref_patches.unsqueeze(1)
-        tar_patches = tar_patches.unsqueeze(1)
+        ref_patches, ref_keypoints, tar_patches, tar_keypoints, confidences, cert = batch
 
         coords_pred, conf_pred = self.model(
             ref_patches,
@@ -94,28 +93,25 @@ class Light(pl.LightningModule):
         # Calc Loss
 
         coords_loss = self._compute_coords_loss(coords_pred, tar_keypoints)
-        conf_loss = self._compute_confidence_loss(conf_pred, confidences)
+        conf_loss = self._compute_confidence_loss(conf_pred, confidences, cert)
 
-        coords_percent_3_pixel = self._compute_coords_accuracy_percentage(coords_pred, coords, pixels=3)
-        coords_percent_2_pixel = self._compute_coords_accuracy_percentage(coords_pred, coords, pixels=2)
-        coords_percent_15_pixel = self._compute_coords_accuracy_percentage(coords_pred, coords, pixels=1.5)
-        coords_percent_1_pixel = self._compute_coords_accuracy_percentage(coords_pred, coords, pixels=1)
+        coords_percent_3_pixel = self._compute_coords_accuracy_percentage(coords_pred, tar_keypoints, pixels=3)
+        coords_percent_2_pixel = self._compute_coords_accuracy_percentage(coords_pred, tar_keypoints, pixels=2)
+        coords_percent_15_pixel = self._compute_coords_accuracy_percentage(coords_pred, tar_keypoints, pixels=1.5)
+        coords_percent_1_pixel = self._compute_coords_accuracy_percentage(coords_pred, tar_keypoints, pixels=1)
 
-        # loss = coords_loss
-        # loss = coords_loss * 0.8 + (coords_percent_1_pixel / 100) * 0.2
-        loss = coords_loss * 0.8 + conf_loss * 0.2 
+        loss = coords_loss * 0.2 + conf_loss * 0.8
 
         return loss, coords_loss, coords_pred, conf_loss, conf_pred, coords_percent_3_pixel, coords_percent_2_pixel, coords_percent_15_pixel, coords_percent_1_pixel
         # return loss, coords_loss, coords_pred, coords_percent_3_pixel, coords_percent_2_pixel, coords_percent_15_pixel, coords_percent_1_pixel
 
     def training_step(self, batch, batch_idx):
-        _, _, _, tar_keypoints, _ = batch
+        _, _, _, tar_keypoints, _, _ = batch
         loss, coords_loss, coords_pred, conf_loss, conf_pred, coords_percent_3_pixel, coords_percent_2_pixel, coords_percent_15_pixel, coords_percent_1_pixel = self._shared_step(batch)
         # loss, coords_loss, coords_pred, coords_percent_3_pixel, coords_percent_2_pixel, coords_percent_15_pixel, coords_percent_1_pixel = self._shared_step(batch)
 
         # Log metrics
-
-        coords_pred = (coords_pred + 1) * ((config.image.patch_size - 1) / 2) # 63.5 15.5
+        coords_pred = (coords_pred + 1) * ((config.image.train_patch_size - 1) / 2) # 15.5
 
         metrics = {
             "train/loss": loss,
@@ -133,20 +129,20 @@ class Light(pl.LightningModule):
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
             # self._log_images(batch, coords_pred, rotation_pred=rotation_pred, confidence_pred=conf_pred, limit_count=limit_count, stage='train')
-            # self._log_images(batch, coords_pred, confidence_pred=conf_pred, limit_count=limit_count, stage='train')
-            self._log_images(batch, coords_pred, limit_count=limit_count, stage='train')
+            self._log_images(batch, coords_pred, confidence_pred=conf_pred, limit_count=limit_count, stage='train')
+            # self._log_images(batch, coords_pred, limit_count=limit_count, stage='train')
 
         return loss
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):
-        _, _, _, tar_keypoints, _ = batch
+        _, _, _, tar_keypoints, _, _ = batch
         loss, coords_loss, coords_pred, conf_loss, conf_pred, coords_percent_3_pixel, coords_percent_2_pixel, coords_percent_15_pixel, coords_percent_1_pixel = self._shared_step(batch)
         # loss, coords_loss, coords_pred, coords_percent_3_pixel, coords_percent_2_pixel, coords_percent_15_pixel, coords_percent_1_pixel = self._shared_step(batch)
 
         # Log metrics
 
-        coords_pred = (coords_pred + 1) * ((config.image.patch_size - 1) / 2) # 63.5 15.5
+        coords_pred = (coords_pred + 1) * ((config.image.train_patch_size - 1) / 2) # 15.5
 
         metrics = {
             "val/loss": loss,
@@ -164,8 +160,8 @@ class Light(pl.LightningModule):
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
             # self._log_images(batch, coords_pred, rotation_pred=rotation_pred, confidence_pred=conf_pred, limit_count=limit_count, stage='val')
-            # self._log_images(batch, coords_pred, confidence_pred=conf_pred, limit_count=limit_count, stage='val')
-            self._log_images(batch, coords_pred, limit_count=limit_count, stage='val')
+            self._log_images(batch, coords_pred, confidence_pred=conf_pred, limit_count=limit_count, stage='val')
+            # self._log_images(batch, coords_pred, limit_count=limit_count, stage='val')
 
         return metrics
 
@@ -177,7 +173,7 @@ class Light(pl.LightningModule):
 
         # Log metrics
 
-        coords_pred = (coords_pred + 1) * ((config.image.patch_size - 1) / 2) # 63.5 15.5
+        coords_pred = (coords_pred + 1) * ((config.image.train_patch_size - 1) / 2) # 63.5 15.5
 
         metrics = {
             "test/loss": loss,
@@ -195,22 +191,23 @@ class Light(pl.LightningModule):
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
             # self._log_images(batch, coords_pred, rotation_pred=rotation_pred, confidence_pred=conf_pred, limit_count=limit_count, stage='test')
-            # self._log_images(batch, coords_pred, confidence_pred=conf_pred, limit_count=limit_count, stage='test')
-            self._log_images(batch, coords_pred, limit_count=limit_count, stage='test')
+            self._log_images(batch, coords_pred, confidence_pred=conf_pred, limit_count=limit_count, stage='test')
+            # self._log_images(batch, coords_pred, limit_count=limit_count, stage='test')
 
         return metrics
 
     def _log_images(self, batch, target_coords, rotation_pred=None, confidence_pred=None, limit_count=None, stage=None):
-        ref_patches, ref_keypoints, tar_patches, tar_keypoints, confidences = batch
+        ref_patches, ref_keypoints, tar_patches, tar_keypoints, confidences, cert = batch
         
         image_grid = show_batch(
             ref_patches, tar_patches,
             ref_keypoints, 
+
             patch_level_target_coords=target_coords, patch_level_target_coords_true=tar_keypoints,
-            # rotations_true=batch.rotations,
-            # rotations=rotation_pred,
+
             confidences_true=confidences,
             confidence_pred=confidence_pred,
+
             limit_count=limit_count,
             n_columns=8,
         )
@@ -284,7 +281,7 @@ class Light(pl.LightningModule):
             save_last=True,
         )
 
-        progress_bar_callback = TQDMProgressBar(refresh_rate=200) 
+        progress_bar_callback = TQDMProgressBar(refresh_rate=5) 
         lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
 
         summary_callback = ModelSummary(max_depth=1)
