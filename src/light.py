@@ -77,8 +77,9 @@ class Light(pl.LightningModule):
     @staticmethod
     def _compute_confidence_loss(logits_pred, confidences, cert):
         # loss = F.binary_cross_entropy_with_logits(logits_pred, cert)
-        # loss = F.binary_cross_entropy_with_logits(logits_pred.squeeze(1), confidences)
-        loss = F.mse_loss(logits_pred.squeeze(1), confidences)
+        loss = F.binary_cross_entropy_with_logits(logits_pred.squeeze(1), confidences)
+        # loss = F.mse_loss(logits_pred.squeeze(1), confidences)
+        
         return loss
 
     def _shared_step(self, batch):

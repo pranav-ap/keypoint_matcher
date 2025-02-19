@@ -2,10 +2,10 @@ log_level: TRACE  # TRACE WARNING
 
 
 experiment:
-    # sun_space sat_grace friday_bobby
-    model: sun_water 
-    linux: 50
-    params: 8mil
+    # sun_dune sun_space 
+    model: tues_julia 
+    linux: 75
+    params: 15mil
     heads: 2
     datasets: mix
     stddev: 4
@@ -52,9 +52,12 @@ task:
                 # - MGO08_mapping_hard
             
             all_missing:
-                - MOO07_mapping_easy 
-                # - MOO09_short_1_updown 
-                # - MOO10_short_2_panorama 
+                - MOO02_hand_puncher_2
+                - MOO03_hand_shooter_easy
+                - MOO05_inspect_easy
+                - MOO06_inspect_hard
+                - MOO07_mapping_easy
+                - MOO09_short_1_updown
             
         val:
             normal: []
@@ -101,11 +104,9 @@ task:
                 # - MOO11_short_3_backandforth
 
             all_missing:
-                - MOO07_mapping_easy 
-                # - MOO08_mapping_hard 
-
-                # - MOO09_short_1_updown 
-                # - MOO10_short_2_panorama 
+                - MOO04_hand_shooter_hard
+                - MOO08_mapping_hard
+                # - MOO10_short_2_panorama
 
         test:
             normal: []
@@ -166,8 +167,8 @@ train:
     max_epochs: 200
     check_val_every_n_epoch: 2
     num_sanity_val_steps: 1
-    log_every_n_steps: 5 # 100
-    accumulate_grad_batches: 8
+    log_every_n_steps: 20 # 100
+    accumulate_grad_batches: 6
     learning_rate: 1e-4 # 1e-4    
 
 val:

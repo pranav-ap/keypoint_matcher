@@ -138,7 +138,7 @@ class MatchesDataset(torch.utils.data.Dataset):
 
                         certainty = cert[y0, x0]
 
-                        if certainty > 0.2: # or np.random.rand() < certainty: 
+                        if certainty > 0.1: # or np.random.rand() < certainty: 
                             names.append((video, cam, image_name_a, image_name_b, kpid, saves))
 
         return names
