@@ -1,60 +1,3 @@
-# import torch
-# import torch.nn as nn
-# import math
-# from config import config
-
-# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# def positional_encoding(d_model, length):
-#     pe = torch.zeros(length, d_model, requires_grad=False).to(device)
-#     position = torch.arange(0, length, dtype=torch.float).unsqueeze(1)
-#     div_term = torch.exp(torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model))
-    
-#     pe[:, 0::2] = torch.sin(position * div_term)
-#     pe[:, 1::2] = torch.cos(position * div_term)
-#     return pe.unsqueeze(0)
-
-# class MatcherModel(nn.Module):
-#     def __init__(self, patch_size=82, d_model=256, n_heads=8, num_layers=2, dim_feedforward=512):
-#         super().__init__()
-        
-#         self.patch_size = patch_size
-#         in_channels = 1 * 2 + 2
-#         self.embedding = nn.Conv2d(in_channels, d_model, kernel_size=3, padding=1, bias=False)
-        
-#         self.pos_encoding = positional_encoding(d_model, patch_size * patch_size)
-        
-#         encoder_layer = nn.TransformerEncoderLayer(
-#             d_model=d_model, nhead=n_heads, dim_feedforward=dim_feedforward, batch_first=True
-#         )
-#         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-        
-#         self.head = nn.Sequential(
-#             nn.Linear(d_model, 128),
-#             nn.ReLU(),
-#             nn.Linear(128, 32),
-#             nn.ReLU(),
-#             nn.Linear(32, 3),  # 2 for coords, 1 for confidence
-#         )
-    
-#     def forward(self, ref_patches, tgt_patches, ref_coords):
-#         batch_size, _, height, width = ref_patches.shape
-#         ref_coords = ref_coords.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, height, width) / (height - 1)
-        
-#         x = torch.cat([ref_patches, tgt_patches, ref_coords], dim=1).to(device)
-#         x = self.embedding(x)
-        
-#         x = x.flatten(2).transpose(1, 2)  # Flatten spatial dims and prepare for transformer
-#         x = x + self.pos_encoding[:, : x.shape[1], :]
-        
-#         x = self.transformer(x)
-#         x = x.mean(dim=1)
-        
-#         output = self.head(x)
-#         coords, confidence = output[:, :2], output[:, 2].unsqueeze(-1)
-        
-#         return torch.tanh(coords), torch.sigmoid(confidence)
-
 import torch
 import torch.nn as nn
 import math
@@ -98,17 +41,17 @@ class ResNetBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super().__init__()
         
-        self.block = depthwise_separable_conv(in_channels, out_channels, stride=stride)
+        # self.block = depthwise_separable_conv(in_channels, out_channels, stride=stride)
 
-        # self.block = nn.Sequential(
-        #     nn.BatchNorm2d(in_channels),
-        #     nn.ReLU(),
-        #     nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False), 
+        self.block = nn.Sequential(
+            nn.BatchNorm2d(in_channels),
+            nn.ReLU(),
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False), 
             
-        #     nn.BatchNorm2d(out_channels),
-        #     nn.ReLU(),
-        #     nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
-        # )
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(),
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
+        )
 
         self.shortcut = None
         if in_channels != out_channels or stride != 1:
@@ -136,14 +79,10 @@ class MatcherModel(nn.Module):
         patch_size=config.image.patch_size
 
         in_channels = 1 * 2 + 2
-        base_channels = 128
+        base_channels = 64
 
         self.feature_extractor = nn.Sequential(
-            nn.Conv2d(in_channels, 64, 3, 1, 1, bias=False),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-
-            nn.Conv2d(64, base_channels, 3, 1, 1, bias=False),
+            nn.Conv2d(in_channels, base_channels, 3, 1, 1, bias=False),
             nn.BatchNorm2d(base_channels),
             nn.ReLU(),
         )
@@ -153,9 +92,13 @@ class MatcherModel(nn.Module):
         out_channels = 512
 
         self.backbone = nn.Sequential(
-            ResNetBlock(base_channels, 256, 1),
-            ResNetBlock(256, 256, 1),
-            ResNetBlock(256, 512, 2),            
+            ResNetBlock(base_channels, 128, 1),
+            ResNetBlock(128, 128, 2),
+
+            ResNetBlock(128, 256, 1),
+            ResNetBlock(256, 256, 2),
+
+            ResNetBlock(256, 512, 1), 
             ResNetBlock(512, out_channels, 2),
         )
 
@@ -167,9 +110,9 @@ class MatcherModel(nn.Module):
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),
-            nn.Linear(128, 32),
+            nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(32, 3),
+            nn.Linear(64, 3),
         )
 
     def forward(self, ref_patches, tgt_patches, ref_coords):
@@ -189,10 +132,7 @@ class MatcherModel(nn.Module):
         target_coords, target_confidences = out[:, :2], out[:, 2].unsqueeze(-1)
         
         target_coords = torch.tanh(target_coords)
-        
         target_confidences = torch.sigmoid(target_confidences)
-        threshold = 0.2
-        target_confidences = (target_confidences > threshold).float()
-        
+
         return target_coords, target_confidences
 

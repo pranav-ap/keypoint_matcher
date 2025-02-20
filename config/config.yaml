@@ -3,10 +3,10 @@ log_level: TRACE  # TRACE WARNING
 
 experiment:
     # sun_dune sun_space 
-    model: tues_julia 
-    linux: 75
-    params: 15mil
-    heads: 2
+    model: thur_zero # thur_andor thur_zero
+    linux: 57 # 75  57
+    params: 11mil
+    heads: 1
     datasets: mix
     stddev: 4
     # name: ${experiment.model}_${experiment.linux}_linux_${experiment.params}_${experiment.heads}_heads_${experiment.datasets}_dataset_${experiment.stddev}_stddev
@@ -54,11 +54,16 @@ task:
             all_missing:
                 - MOO02_hand_puncher_2
                 - MOO03_hand_shooter_easy
+                - MOO04_hand_shooter_hard
                 - MOO05_inspect_easy
                 - MOO06_inspect_hard
+
                 - MOO07_mapping_easy
+                - MOO08_mapping_hard
                 - MOO09_short_1_updown
-            
+                - MOO10_short_2_panorama
+                - MOO11_short_3_backandforth
+
         val:
             normal: []
                 # Count : 4886
@@ -106,7 +111,7 @@ task:
             all_missing:
                 - MOO04_hand_shooter_hard
                 - MOO08_mapping_hard
-                # - MOO10_short_2_panorama
+                - MOO10_short_2_panorama
 
         test:
             normal: []

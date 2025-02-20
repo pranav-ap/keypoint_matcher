@@ -138,7 +138,7 @@ class MatchesDataset(torch.utils.data.Dataset):
 
                         certainty = cert[y0, x0]
 
-                        if certainty > 0.1: # or np.random.rand() < certainty: 
+                        if certainty > 0.01: # or np.random.rand() < certainty: 
                             names.append((video, cam, image_name_a, image_name_b, kpid, saves))
 
         return names
@@ -271,6 +271,14 @@ class MatchesDataset(torch.utils.data.Dataset):
            image, left, upper, right, lower, patch_size=desired_patch_size
         )
 
+        if self.stage == 'train' and self.image_augmentation_no_kp:
+            patch_np = np.array(patch)
+            transformed = self.image_augmentation_no_kp(
+                image=patch_np,
+            )
+
+            patch = Image.fromarray(transformed['image'])
+        
         if self.patch_normalize:
             patch = self.patch_normalize(patch)
             patch = min_max_normalize(patch, min_val=0.0, max_val=1.0) 
@@ -346,8 +354,8 @@ class MatchesDataModule(L.LightningDataModule):
 
         self.image_augmentation_no_kp = A.Compose(
             transforms=[
-                A.Defocus(p=0.5, radius=1),
-                # A.GaussNoise(p=1, var_limit=0.001),
+                A.GaussNoise(p=0.7, std_range=(0.04, 0.07), noise_scale_factor=0.5),
+                A.Defocus(p=0.7, radius=1),
             ]
         )
 
@@ -373,7 +381,7 @@ class MatchesDataModule(L.LightningDataModule):
                 perturb_target=True,  # True False
 
                 patch_normalize=self.patch_normalize,
-                image_augmentation_no_kp=self.image_augmentation_no_kp,
+                # image_augmentation_no_kp=self.image_augmentation_no_kp,
             )
 
             self.dataset['val'] = MatchesDataset(

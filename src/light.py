@@ -46,12 +46,23 @@ class Light(pl.LightningModule):
         )
 
         return pred
-        
+
+    @staticmethod
+    def _normalize_coords(coords):
+        """Normalizes coordinates from [0, 31] to [-1, 1] in a numerically stable way."""
+        return (coords - (config.image.train_patch_size - 1) / 2) / ((config.image.train_patch_size - 1) / 2)
+
+    @staticmethod
+    def _denormalize_coords(coords):
+        """Denormalizes coordinates from [-1, 1] back to [0, 31]."""
+        return coords * ((config.image.train_patch_size - 1) / 2) + (config.image.train_patch_size - 1) / 2
+
     @staticmethod
     def _compute_coords_accuracy_percentage(pred, target, pixels=1):
         # Scale pred from [-1, 1] to [0, 31]
-        scaled_pred = (pred.float() + 1) * ((config.image.train_patch_size - 1) / 2) # 15.5 
-        
+        # scaled_pred = (pred.float() + 1) * ((config.image.train_patch_size - 1) / 2) # 15.5 
+        scaled_pred = Light._denormalize_coords(pred.float())
+
         difference = torch.abs(scaled_pred - target)
 
         # Check which differences exceed N pixels
@@ -64,23 +75,30 @@ class Light(pl.LightningModule):
     @staticmethod
     def _compute_coords_loss(pred, target):
         # Scale targets to [-1, 1]
-        scaled_target = target.float() / ((config.image.train_patch_size - 1) / 2) - 1  
+        # scaled_target = target.float() / ((config.image.train_patch_size - 1) / 2) - 1  
+        scaled_target = Light._normalize_coords(target.float())
         
-        # MSE Loss
-        loss = F.mse_loss(pred, scaled_target)
-
-        # L1 Loss
+        loss = F.mse_loss(pred, scaled_target)   # try mae 
         # loss = F.l1_loss(pred, scaled_target)
+        # loss = F.smooth_l1_loss(pred, scaled_target, beta=0.3) 
 
         return loss
 
     @staticmethod
-    def _compute_confidence_loss(logits_pred, confidences, cert):
-        # loss = F.binary_cross_entropy_with_logits(logits_pred, cert)
-        loss = F.binary_cross_entropy_with_logits(logits_pred.squeeze(1), confidences)
-        # loss = F.mse_loss(logits_pred.squeeze(1), confidences)
+    def _compute_confidence_loss(pred, confidences, cert):
+        # loss = F.binary_cross_entropy_with_logits(pred, cert)
+        # loss = F.binary_cross_entropy_with_logits(pred.squeeze(1), confidences)
+
+        # threshold = 0.05
+        # confidences = (confidences > threshold).float()
+        # loss = F.binary_cross_entropy(pred.squeeze(1), confidences)
+
+        loss = F.mse_loss(pred.squeeze(1), confidences)
+        # loss = F.smooth_l1_loss(pred.squeeze(1), confidences, beta=0.3) 
+        # loss = F.smooth_l1_loss(pred.squeeze(1), confidences)
         
         return loss
+
 
     def _shared_step(self, batch):
         ref_patches, ref_keypoints, tar_patches, tar_keypoints, confidences, cert = batch
@@ -94,15 +112,26 @@ class Light(pl.LightningModule):
         # Calc Loss
 
         coords_loss = self._compute_coords_loss(coords_pred, tar_keypoints)
-        conf_loss = self._compute_confidence_loss(conf_pred, confidences, cert)
+        conf_loss = 0 # self._compute_confidence_loss(conf_pred, confidences, cert)
+
+        # coords_loss = self.weighted_geometric_loss(coords_pred, tar_keypoints, conf_pred)
 
         coords_percent_3_pixel = self._compute_coords_accuracy_percentage(coords_pred, tar_keypoints, pixels=3)
         coords_percent_2_pixel = self._compute_coords_accuracy_percentage(coords_pred, tar_keypoints, pixels=2)
         coords_percent_15_pixel = self._compute_coords_accuracy_percentage(coords_pred, tar_keypoints, pixels=1.5)
         coords_percent_1_pixel = self._compute_coords_accuracy_percentage(coords_pred, tar_keypoints, pixels=1)
 
-        loss = coords_loss * 0.2 + conf_loss * 0.8
+        loss = coords_loss # * 0.2 + conf_loss * 0.8
 
+        # loss = coords_loss + conf_loss 
+        
+        # loss = coords_loss
+
+        # Dynamic weighting: Increase weight of smaller loss to balance
+        # lambda_coords = 0.5 / (coords_loss.detach() + 1e-6)
+        # lambda_conf = 0.5 / (conf_loss.detach() + 1e-6)
+        # loss = lambda_coords * coords_loss + lambda_conf * conf_loss
+        
         return loss, coords_loss, coords_pred, conf_loss, conf_pred, coords_percent_3_pixel, coords_percent_2_pixel, coords_percent_15_pixel, coords_percent_1_pixel
         # return loss, coords_loss, coords_pred, coords_percent_3_pixel, coords_percent_2_pixel, coords_percent_15_pixel, coords_percent_1_pixel
 
@@ -113,7 +142,7 @@ class Light(pl.LightningModule):
 
         # Log metrics
         coords_pred = (coords_pred + 1) * ((config.image.train_patch_size - 1) / 2) # 15.5
-
+                
         metrics = {
             "train/loss": loss,
             "train/coords_loss": coords_loss,

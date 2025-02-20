@@ -150,8 +150,8 @@ def show_batch(
         conf_true = f"{confidences_true[i].item():.2f}" if confidences_true is not None else '-'
         conf = f"{confs[i].item():.2f}" if confidence_pred is not None else '-'
         
-        if confidence_pred is not None and float(conf) > 0.2:
-            conf = f'{conf} $$'
+        # if confidence_pred is not None and float(conf) > 0.2:
+        #     conf = f'{conf} $$'
 
         target_patch = target_patches[i]
         x, y = patch_level_target_coords[i]
