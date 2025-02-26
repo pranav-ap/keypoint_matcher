@@ -1,3 +1,6 @@
+from config import config
+from utils import logger, min_max_normalize
+
 import os
 from dataclasses import dataclass
 from typing import Dict, Optional
@@ -11,9 +14,6 @@ import numpy as np
 import torch
 from PIL import Image
 from torchvision import transforms as T
-
-from config import config
-from utils import logger, min_max_normalize
 
 torch.set_float32_matmul_precision('medium')
 
@@ -38,7 +38,6 @@ def crop_image_alb(image: Image.Image, left, upper, right, lower, patch_size=32)
     return patch
     
 
-
 def match_collate_fn(batch):
     ref_patches, ref_keypoints, tar_patches, tar_keypoints, certainties, cert = zip(*batch)
 
@@ -55,6 +54,58 @@ def match_collate_fn(batch):
         certainties,
         torch.stack(cert).unsqueeze(1),         
     )
+
+
+import scipy.ndimage
+
+def adjust_certainty(cert, sigma=3, suppress_threshold=0.2, suppress_factor=0.5, boost_factor=1.2):
+    suppress_factor = 0.9
+    boost_factor = 1.6
+
+    # Step 1: Smooth the certainty map
+    gaussian_cert = scipy.ndimage.gaussian_filter(cert, sigma=sigma)
+
+    # Step 2: Suppress low-confidence patches (push them lower)
+    suppressed_cert = gaussian_cert.copy()
+    suppressed_cert[suppressed_cert < suppress_threshold] *= suppress_factor
+
+    # Step 3: Boost confident areas
+    suppressed_cert[suppressed_cert >= suppress_threshold] *= boost_factor
+
+    # Step 4: Ensure values stay in [0, 1]
+    return np.clip(suppressed_cert, 0, 1)
+
+
+def weighted_confidence(confidences, x, y, sigma=3):
+    """
+    Computes an overall confidence score for a 2D confidence tensor, emphasizing a specific (x, y) coordinate.
+
+    Args:
+        confidences (torch.Tensor): 2D tensor of confidence values (can be on CUDA).
+        x (int): Target x-coordinate.
+        y (int): Target y-coordinate.
+        sigma (float): Controls how much emphasis is given to (x, y). Lower sigma = more local focus.
+
+    Returns:
+        float: Weighted overall confidence.
+    """
+    if confidences.is_cuda:
+        confidences = confidences.cpu().numpy()
+    else:
+        confidences = confidences.numpy()
+
+    H, W = confidences.shape
+    yy, xx = np.meshgrid(np.arange(H), np.arange(W), indexing="ij")
+
+    # Create a Gaussian weight mask centered at (x, y)
+    weights = np.exp(-((xx - x) ** 2 + (yy - y) ** 2) / (2 * sigma ** 2))
+    weights /= weights.sum()  # Normalize to sum to 1
+
+    # Compute weighted confidence
+    overall_confidence = np.sum(confidences * weights)
+
+    return overall_confidence
+
 
 
 class MatchesDataset(torch.utils.data.Dataset):
@@ -122,12 +173,13 @@ class MatchesDataset(torch.utils.data.Dataset):
                         assert cert.shape == (config.image.patch_size, config.image.patch_size), f'{cert.shape=}'
                         assert len(saves) == 10
 
-                        ref_crop_keypoint = [0, 0]
+                        ref_crop_keypoint = tar_crop_keypoint = [0, 0]
 
                         [
                             ref_crop_keypoint[0], ref_crop_keypoint[1],
                             ref_left, ref_upper, ref_right, ref_lower,
 
+                            # tar_crop_keypoint[0], tar_crop_keypoint[1],
                             tar_left, tar_upper, tar_right, tar_lower,
                         ] = saves 
 
@@ -138,8 +190,11 @@ class MatchesDataset(torch.utils.data.Dataset):
 
                         certainty = cert[y0, x0]
 
-                        if certainty > 0.01: # or np.random.rand() < certainty: 
+                        if certainty < 0.08: # or np.random.rand() < certainty: 
                             names.append((video, cam, image_name_a, image_name_b, kpid, saves))
+
+                        # if len(names) > 200:
+                        #     break
 
         return names
 
@@ -305,15 +360,16 @@ class MatchesDataset(torch.utils.data.Dataset):
         cert = torch.from_numpy(cert)
         pixel_coords = self._warp_to_pixel_coords(warp)
 
-        ref_crop_keypoint = [0, 0]
+        ref_crop_keypoint = tar_crop_keypoint = [0, 0]
 
         [
             ref_crop_keypoint[0], ref_crop_keypoint[1],
             ref_left, ref_upper, ref_right, ref_lower,
 
+            # tar_crop_keypoint[0], tar_crop_keypoint[1],
             tar_left, tar_upper, tar_right, tar_lower,
         ] = saves 
-        
+                
         ref_patch = self._prepare_patch(image_name_a, ref_left, ref_upper, ref_right, ref_lower)
         tar_patch = self._prepare_patch(image_name_b, tar_left, tar_upper, tar_right, tar_lower)
 
@@ -323,6 +379,25 @@ class MatchesDataset(torch.utils.data.Dataset):
         x0 = int(x)
 
         certainty = cert[y0, x0]
+
+        # import scipy.ndimage
+        # gaussian_cert = scipy.ndimage.gaussian_filter(cert, sigma=7)
+        # certainty = gaussian_cert[y0, x0]
+
+        # adjusted_cert = adjust_certainty(cert)
+        # certainty = adjusted_cert[y0, x0]
+
+        # kernel_size = 5 
+        # half_k = kernel_size // 2
+        # y_min, y_max = max(0, y0 - half_k), min(cert.shape[0], y0 + half_k + 1)
+        # x_min, x_max = max(0, x0 - half_k), min(cert.shape[1], x0 + half_k + 1)
+        # local_certainties = cert[y_min:y_max, x_min:x_max]
+        # certainty = local_certainties.mean()
+        # certainty = local_certainties.max()
+
+        certainty = weighted_confidence(cert, x0, y0, sigma=5)
+        
+        # certainty = round(certainty, 1)
 
         x0, y0, x1, y1 = pixel_coords[y0, x0]
         x1, y1 = x1.item(), y1.item()

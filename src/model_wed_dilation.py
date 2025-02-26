@@ -1,8 +1,10 @@
-import torch
-import torch.nn as nn
-import math
 from config import config
 from utils import logger 
+
+import torch
+import torch.nn as nn
+from torch.utils.checkpoint import checkpoint
+import math
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -32,17 +34,35 @@ def depthwise_separable_conv(in_channels, out_channels, kernel_size=3, stride=1,
         nn.BatchNorm2d(in_channels),
         nn.ReLU(),
         
+        # nn.Dropout(0.2),
+
         nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0, bias=False),
         nn.BatchNorm2d(out_channels),
         nn.ReLU(),
     )
 
 
+def depthwise_separable_conv_dil(in_channels, out_channels, kernel_size=3, stride=1, padding=1, dilation=1):
+    padding = ((kernel_size - 1) * dilation) // 2 
+
+    return nn.Sequential(
+        nn.Conv2d(in_channels, in_channels, kernel_size, stride, padding=padding, dilation=dilation, bias=False),
+        nn.BatchNorm2d(in_channels),
+        nn.ReLU(),
+        
+        # nn.Dropout(0.2),
+
+        nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0, dilation=dilation, bias=False),
+        nn.BatchNorm2d(out_channels),
+        nn.ReLU(),
+    )
+
+
 class ResNetBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, stride=1):
+    def __init__(self, in_channels, out_channels, stride=1, dilation=1):
         super().__init__()
         
-        self.block = depthwise_separable_conv(in_channels, out_channels, stride=stride)
+        self.block = depthwise_separable_conv_dil(in_channels, out_channels, stride=stride, dilation=dilation)
 
         # self.block = nn.Sequential(
         #     nn.BatchNorm2d(in_channels),
@@ -63,22 +83,21 @@ class ResNetBlock(nn.Module):
 
     def forward(self, x):
         identity = x
-        
+
         if self.shortcut:
             identity = self.shortcut(x)
 
         out = self.block(x)
-        out = out + identity    
+        out = out + identity
 
         return out
-
+            
 
 class MatcherModel(nn.Module):
     def __init__(self):
         super().__init__()
 
         patch_size = config.image.patch_size
-
         in_channels = 1 * 2 + 2
         base_channels = 64
 
@@ -86,25 +105,26 @@ class MatcherModel(nn.Module):
             nn.Conv2d(in_channels, base_channels, 3, 1, 1, bias=False),
             nn.BatchNorm2d(base_channels),
             nn.ReLU(),
+            # nn.Dropout(0.2),
         )
-        
+       
         pe = positionalencoding2d(base_channels, patch_size, patch_size).unsqueeze(0)
         self.register_buffer('positional_encoding', pe)
 
-        out_channels = 1024 
+        out_channels = 512 
 
         self.backbone = nn.Sequential(
-            ResNetBlock(base_channels, 128, 1),
-            ResNetBlock(128, 128, 2),
+            ResNetBlock(base_channels, 128, stride=1),
+            ResNetBlock(128, 128, stride=1),
 
-            ResNetBlock(128, 256, 1),
-            ResNetBlock(256, 256, 2),
+            ResNetBlock(128, 256, stride=1, dilation=1),
+            ResNetBlock(256, 256, stride=1, dilation=1),
 
-            ResNetBlock(256, 512, 1),
-            ResNetBlock(512, 512, 2),
+            ResNetBlock(256, 512, stride=1, dilation=2),
+            ResNetBlock(512, 512, stride=1, dilation=2),
 
-            ResNetBlock(512, 1024, 1),
-            ResNetBlock(1024, out_channels, 2),
+            # ResNetBlock(512, 1024, stride=1, dilation=4),
+            # ResNetBlock(1024, out_channels, stride=1, dilation=4),
         )
 
         self.global_pool = nn.AdaptiveAvgPool2d(1)
@@ -113,6 +133,7 @@ class MatcherModel(nn.Module):
         self.head = nn.Sequential(
             nn.Linear(out_channels, 128),  
             nn.ReLU(),
+            # nn.Dropout(0.2),
             nn.Linear(128, 3),  
         )
 
@@ -122,7 +143,7 @@ class MatcherModel(nn.Module):
 
         x = torch.cat([ref_patches, tgt_patches, ref_coords], dim=1).to(device)
         x = self.feature_extractor(x)
-        x = x + self.positional_encoding.clone()
+        x = x + self.positional_encoding
 
         x = self.backbone(x)
         x = self.global_pool(x)

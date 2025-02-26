@@ -81,13 +81,13 @@ def show_batch(
         rotations = rotations * (180 / torch.pi) 
 
     try:
-        font = ImageFont.truetype("arial.ttf", 14) #  20
+        font = ImageFont.truetype("arial.ttf", 12) #  20
     except IOError:
         font = ImageFont.load_default() 
 
-    patch_size = config.image.patch_size # 128  82
+    patch_size = config.image.patch_size 
     extra_col_gap = 0
-    radius = 4
+    radius = 3
 
     gap_for_text = 25
 

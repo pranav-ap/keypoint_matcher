@@ -26,20 +26,35 @@ def positionalencoding2d(d_model, height, width):
     return pe
 
 
+def depthwise_separable_conv(in_channels, out_channels, kernel_size=3, stride=1, padding=1):
+    return nn.Sequential(
+        nn.Conv2d(in_channels, in_channels, kernel_size, stride, padding, groups=in_channels, bias=False),
+        nn.BatchNorm2d(in_channels),
+        nn.ReLU(),
+        
+        # nn.Dropout(0.2),
+
+        nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0, bias=False),
+        nn.BatchNorm2d(out_channels),
+        nn.ReLU(),
+    )
+
+
 class ResNetBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super().__init__()
         
-        # self.block = depthwise_separable_conv(in_channels, out_channels, stride=stride)
-        self.block = nn.Sequential(
-            nn.BatchNorm2d(in_channels),
-            nn.ReLU(),
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False), 
+        self.block = depthwise_separable_conv(in_channels, out_channels, stride=stride)
+
+        # self.block = nn.Sequential(
+        #     nn.BatchNorm2d(in_channels),
+        #     nn.ReLU(),
+        #     nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False), 
             
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(),
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
-        )
+        #     nn.BatchNorm2d(out_channels),
+        #     nn.ReLU(),
+        #     nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
+        # )
 
         self.shortcut = None
         if in_channels != out_channels or stride != 1:
@@ -64,7 +79,7 @@ class MatcherModel(nn.Module):
     def __init__(self):
         super().__init__()
 
-        patch_size=config.image.patch_size
+        patch_size = config.image.patch_size
 
         in_channels = 1 * 2 + 2
         base_channels = 64
@@ -73,27 +88,36 @@ class MatcherModel(nn.Module):
             nn.Conv2d(in_channels, base_channels, 3, 1, 1, bias=False),
             nn.BatchNorm2d(base_channels),
             nn.ReLU(),
+            # nn.Dropout(0.2),
         )
- 
-        self.positional_encoding = positionalencoding2d(base_channels, patch_size, patch_size).unsqueeze(0).to(device)
+        
+        pe = positionalencoding2d(base_channels, patch_size, patch_size).unsqueeze(0)
+        self.register_buffer('positional_encoding', pe)
 
-        out_channels = 512
+        out_channels = 1024 
 
         self.backbone = nn.Sequential(
             ResNetBlock(base_channels, 128, 1),
+            ResNetBlock(128, 128, 2),
+
+            ResNetBlock(128, 256, 1),
+            ResNetBlock(256, 256, 2),
+
             ResNetBlock(256, 512, 1),
-            ResNetBlock(512, out_channels, 1),
+            ResNetBlock(512, 512, 2),
+
+            ResNetBlock(512, 1024, 1),
+            ResNetBlock(1024, out_channels, 2),
         )
 
-        self.global_pool = nn.AdaptiveMaxPool2d(1)
+        self.global_pool = nn.AdaptiveAvgPool2d(1)
         self.flatten = nn.Flatten()
 
         self.head = nn.Sequential(
-            nn.Linear(out_channels, 128),
+            nn.Linear(out_channels, 128),  
             nn.ReLU(),
-            nn.Linear(128, 32),
-            nn.ReLU(),
-            nn.Linear(32, 3),
+            nn.Dropout(0.2),
+            nn.Linear(128, 3),  
         )
 
     def forward(self, ref_patches, tgt_patches, ref_coords):
@@ -111,6 +135,8 @@ class MatcherModel(nn.Module):
         out = self.head(x)
 
         target_coords, target_confidences = out[:, :2], out[:, 2].unsqueeze(-1)
-        target_coords, target_confidences = torch.tanh(target_coords), torch.sigmoid(target_confidences)
-        
+
+        target_coords = torch.tanh(target_coords)
+        target_confidences = torch.sigmoid(target_confidences)
+
         return target_coords, target_confidences

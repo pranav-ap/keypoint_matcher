@@ -1,9 +1,11 @@
 import lightning.pytorch as pl
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import torchmetrics
 from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint, TQDMProgressBar, ModelSummary
 from neptune.types import File
+from torch.distributions.multivariate_normal import MultivariateNormal
 
 from config import config
 from utils import show_batch, get_tensor_grid, logger
@@ -26,7 +28,12 @@ class Light(pl.LightningModule):
 
         self.learning_rate = config.train.learning_rate
         self.mae = torchmetrics.MeanAbsoluteError()
-        # self.r2 = torchmetrics.R2Score()
+
+        self.register_buffer("coords_weight", torch.tensor(1.0))
+        self.register_buffer("conf_weight", torch.tensor(1.0))
+        
+        self.w1 = nn.Parameter(torch.tensor(1.0))
+        self.w2 = nn.Parameter(torch.tensor(1.0))
 
         self.save_hyperparameters({
             'learning_rate': self.learning_rate,
@@ -73,24 +80,31 @@ class Light(pl.LightningModule):
         return percentage
 
     @staticmethod
-    def _compute_coords_loss(pred, target):
-        # Scale targets to [-1, 1]
-        # scaled_target = target.float() / ((config.image.train_patch_size - 1) / 2) - 1  
-        scaled_target = Light._normalize_coords(target.float())
+    def _compute_coords_loss2(pred, target, true_confidences):
+        normalized_target = Light._normalize_coords(target.float())
         
-        loss = F.mse_loss(pred, scaled_target)   # try mae 
+        loss = F.mse_loss(pred, normalized_target, reduction='none')  # Shape: [B, 2]
+        weighted_loss = (loss * true_confidences.unsqueeze(-1)).mean()  # Shape: Scalar
+
+        return weighted_loss
+
+    @staticmethod
+    def _compute_coords_loss(pred, target):
+        normalized_target = Light._normalize_coords(target.float())
+        
+        loss = F.mse_loss(pred, normalized_target) 
         # loss = F.l1_loss(pred, scaled_target)
         # loss = F.smooth_l1_loss(pred, scaled_target, beta=0.3) 
 
         return loss
 
     @staticmethod
-    def _compute_confidence_loss(pred, confidences, cert):
-        # loss = F.binary_cross_entropy_with_logits(pred, cert)
+    def _compute_confidence_loss(pred, confidences):
         # loss = F.binary_cross_entropy_with_logits(pred.squeeze(1), confidences)
 
         # threshold = 0.05
         # confidences = (confidences > threshold).float()
+
         # loss = F.binary_cross_entropy(pred.squeeze(1), confidences)
 
         loss = F.mse_loss(pred.squeeze(1), confidences)
@@ -99,6 +113,24 @@ class Light(pl.LightningModule):
         
         return loss
 
+    @staticmethod
+    def _compute_confidence_loss2(conf_pred, coords_pred, confidences, tar_keypoints, sigma=2.0):
+        loss = F.binary_cross_entropy_with_logits(conf_pred.squeeze(1), confidences, reduction='none')
+
+        # Compute Gaussian weights
+        means = tar_keypoints.float()  # Shape: [B, 2]
+        cov_matrix = torch.tensor([[sigma**2, 0], [0, sigma**2]], dtype=torch.float32, device=tar_keypoints.device)
+
+        dist = MultivariateNormal(means, covariance_matrix=cov_matrix.expand(means.shape[0], 2, 2))
+        peak_prob = dist.log_prob(means).exp()  # Shape: [B]
+        scale_factors = confidences / peak_prob
+
+        # Compute weights for predicted coordinates
+        weights = dist.log_prob(coords_pred.float()).exp() * scale_factors.unsqueeze(-1)
+
+        weighted_loss = (loss * weights).mean()
+
+        return weighted_loss
 
     def _shared_step(self, batch):
         ref_patches, ref_keypoints, tar_patches, tar_keypoints, confidences, cert = batch
@@ -112,28 +144,29 @@ class Light(pl.LightningModule):
         # Calc Loss
 
         coords_loss = self._compute_coords_loss(coords_pred, tar_keypoints)
-        conf_loss = 0 # self._compute_confidence_loss(conf_pred, confidences, cert)
-
-        # coords_loss = self.weighted_geometric_loss(coords_pred, tar_keypoints, conf_pred)
+        # coords_loss = self._compute_coords_loss2(coords_pred, tar_keypoints, confidences)
+        conf_loss = self._compute_confidence_loss(conf_pred, confidences)
+        # conf_loss = self._compute_confidence_loss(conf_pred, coords_pred, confidences, tar_keypoints)
 
         coords_percent_3_pixel = self._compute_coords_accuracy_percentage(coords_pred, tar_keypoints, pixels=3)
         coords_percent_2_pixel = self._compute_coords_accuracy_percentage(coords_pred, tar_keypoints, pixels=2)
         coords_percent_15_pixel = self._compute_coords_accuracy_percentage(coords_pred, tar_keypoints, pixels=1.5)
         coords_percent_1_pixel = self._compute_coords_accuracy_percentage(coords_pred, tar_keypoints, pixels=1)
 
-        loss = coords_loss # * 0.2 + conf_loss * 0.8
+        # with torch.no_grad():
+        #     loss_ratio = coords_loss / (conf_loss + 1e-6)
+        #     self.coords_weight = 1 / (1 + loss_ratio)
+        #     self.conf_weight = loss_ratio / (1 + loss_ratio)
 
-        # loss = coords_loss + conf_loss 
-        
+        # loss = self.coords_weight * coords_loss + self.conf_weight * conf_loss
+
+        loss = self.w1 * coords_loss + self.w2 * conf_loss
+
+        # loss = coords_loss * 0.8 + conf_loss * 0.2
+        # loss = coords_loss + conf_loss         
         # loss = coords_loss
-
-        # Dynamic weighting: Increase weight of smaller loss to balance
-        # lambda_coords = 0.5 / (coords_loss.detach() + 1e-6)
-        # lambda_conf = 0.5 / (conf_loss.detach() + 1e-6)
-        # loss = lambda_coords * coords_loss + lambda_conf * conf_loss
         
         return loss, coords_loss, coords_pred, conf_loss, conf_pred, coords_percent_3_pixel, coords_percent_2_pixel, coords_percent_15_pixel, coords_percent_1_pixel
-        # return loss, coords_loss, coords_pred, coords_percent_3_pixel, coords_percent_2_pixel, coords_percent_15_pixel, coords_percent_1_pixel
 
     def training_step(self, batch, batch_idx):
         _, _, _, tar_keypoints, _, _ = batch
