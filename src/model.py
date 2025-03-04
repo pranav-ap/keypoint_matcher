@@ -28,11 +28,11 @@ def positionalencoding2d(d_model, height, width):
 
 def depthwise_separable_conv(in_channels, out_channels, kernel_size=3, stride=1, padding=1):
     return nn.Sequential(
-        nn.Conv2d(in_channels, in_channels, kernel_size, stride, padding, bias=False),
+        nn.Conv2d(in_channels, in_channels, kernel_size, stride, padding, groups=in_channels, bias=False),
         nn.BatchNorm2d(in_channels),
         nn.ReLU(),
-        
-        nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0, bias=False),
+
+        nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),  
         nn.BatchNorm2d(out_channels),
         nn.ReLU(),
     )
@@ -42,17 +42,17 @@ class ResNetBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super().__init__()
         
-        self.block = depthwise_separable_conv(in_channels, out_channels, stride=stride)
+        # self.block = depthwise_separable_conv(in_channels, out_channels, stride=stride)
 
-        # self.block = nn.Sequential(
-        #     nn.BatchNorm2d(in_channels),
-        #     nn.ReLU(),
-        #     nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False), 
+        self.block = nn.Sequential(
+            nn.BatchNorm2d(in_channels),
+            nn.ReLU(),
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False), 
             
-        #     nn.BatchNorm2d(out_channels),
-        #     nn.ReLU(),
-        #     nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
-        # )
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(),
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
+        )
 
         self.shortcut = None
         if in_channels != out_channels or stride != 1:
@@ -60,6 +60,8 @@ class ResNetBlock(nn.Module):
                 nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(out_channels)
             )
+        
+        self.relu = nn.ReLU()
 
     def forward(self, x):
         identity = x
@@ -68,7 +70,9 @@ class ResNetBlock(nn.Module):
             identity = self.shortcut(x)
 
         out = self.block(x)
-        out = out + identity    
+        out = out + identity
+
+        out = self.relu(out)
 
         return out
 
@@ -80,7 +84,7 @@ class MatcherModel(nn.Module):
         patch_size = config.image.patch_size
 
         in_channels = 1 * 2 + 2
-        base_channels = 64
+        base_channels = 32
 
         self.feature_extractor = nn.Sequential(
             nn.Conv2d(in_channels, base_channels, 3, 1, 1, bias=False),
@@ -91,29 +95,35 @@ class MatcherModel(nn.Module):
         pe = positionalencoding2d(base_channels, patch_size, patch_size).unsqueeze(0)
         self.register_buffer('positional_encoding', pe)
 
-        out_channels = 1024 
+        out_channels = 512 # 1024 
 
         self.backbone = nn.Sequential(
-            ResNetBlock(base_channels, 128, 1),
+            ResNetBlock(base_channels, 64, 1),
+            ResNetBlock(64, 64, 1),
+            ResNetBlock(64, 64, 2),
+
+            ResNetBlock(64, 128, 1),
+            ResNetBlock(128, 128, 1),
             ResNetBlock(128, 128, 2),
 
             ResNetBlock(128, 256, 1),
+            ResNetBlock(256, 256, 1),
             ResNetBlock(256, 256, 2),
 
             ResNetBlock(256, 512, 1),
-            ResNetBlock(512, 512, 2),
-
-            ResNetBlock(512, 1024, 1),
-            ResNetBlock(1024, out_channels, 2),
+            ResNetBlock(512, out_channels, 2),
         )
 
         self.global_pool = nn.AdaptiveAvgPool2d(1)
         self.flatten = nn.Flatten()
 
         self.head = nn.Sequential(
-            nn.Linear(out_channels, 128),  
+            nn.Linear(out_channels, 128), 
+            nn.BatchNorm1d(128), 
             nn.ReLU(),
-            nn.Linear(128, 3),  
+
+            nn.Linear(128, 3), 
+            nn.BatchNorm1d(3),  
         )
 
     def forward(self, ref_patches, tgt_patches, ref_coords):
@@ -122,7 +132,7 @@ class MatcherModel(nn.Module):
 
         x = torch.cat([ref_patches, tgt_patches, ref_coords], dim=1).to(device)
         x = self.feature_extractor(x)
-        x = x + self.positional_encoding.clone()
+        x = x + self.positional_encoding
 
         x = self.backbone(x)
         x = self.global_pool(x)

@@ -2,6 +2,7 @@ from config import config
 from utils import logger, min_max_normalize
 
 import os
+import gc 
 from dataclasses import dataclass
 from typing import Dict, Optional
 
@@ -39,12 +40,14 @@ def crop_image_alb(image: Image.Image, left, upper, right, lower, patch_size=32)
     
 
 def match_collate_fn(batch):
-    ref_patches, ref_keypoints, tar_patches, tar_keypoints, certainties, cert = zip(*batch)
+    ref_patches, ref_keypoints, tar_patches, tar_keypoints, certainties, cert, tar_crop_keypoints = zip(*batch)
 
     # Convert keypoints from list of tuples to tensor
     ref_keypoints = torch.tensor(ref_keypoints, dtype=torch.float32)
     tar_keypoints = torch.tensor(tar_keypoints, dtype=torch.float32)
     certainties = torch.tensor(certainties, dtype=torch.float32)
+
+    tar_crop_keypoints = torch.tensor(tar_crop_keypoints, dtype=torch.float32)
 
     return (
         torch.cat(ref_patches, dim=0).unsqueeze(1), 
@@ -52,7 +55,8 @@ def match_collate_fn(batch):
         torch.cat(tar_patches, dim=0).unsqueeze(1), 
         tar_keypoints,
         certainties,
-        torch.stack(cert).unsqueeze(1),         
+        torch.stack(cert).unsqueeze(1),
+        tar_crop_keypoints,         
     )
 
 
@@ -165,13 +169,23 @@ class MatchesDataset(torch.utils.data.Dataset):
                         
                         image_name_a, image_name_b, kpid = pair_name.split('_')
 
+                        # gc.collect()
+
                         warp = warp_dataset[()]
-                        cert = cert_dataset[()]
+            
+                        try:
+                            cert = cert_dataset[()]
+                        except Exception as e:
+                            logger.debug('oops')
+                            continue
+                        
                         saves = saves_dataset[()]
+
+                        # gc.collect()
 
                         assert warp.shape == (config.image.patch_size, config.image.patch_size, 4), f'{warp.shape=}'
                         assert cert.shape == (config.image.patch_size, config.image.patch_size), f'{cert.shape=}'
-                        assert len(saves) == 10
+                        assert len(saves) == 12, f'{len(saves)=}' # 10 12 
 
                         ref_crop_keypoint = tar_crop_keypoint = [0, 0]
 
@@ -179,21 +193,56 @@ class MatchesDataset(torch.utils.data.Dataset):
                             ref_crop_keypoint[0], ref_crop_keypoint[1],
                             ref_left, ref_upper, ref_right, ref_lower,
 
-                            # tar_crop_keypoint[0], tar_crop_keypoint[1],
+                            tar_crop_keypoint[0], tar_crop_keypoint[1],
                             tar_left, tar_upper, tar_right, tar_lower,
                         ] = saves 
+
+                        desired_patch_size = 82
+                        
+                        if not (0 <= ref_crop_keypoint[0] < desired_patch_size and 0 <= ref_crop_keypoint[1] < desired_patch_size):
+                            logger.debug(f'Bad ref crop kp {ref_crop_keypoint=}')
+                            continue
+                        
+                        if not (0 <= tar_crop_keypoint[0] < desired_patch_size and 0 <= tar_crop_keypoint[1] < desired_patch_size):
+                            logger.debug(f'Bad tar crop kp {tar_crop_keypoint=}')
+                            continue
 
                         x, y = ref_crop_keypoint
 
                         y0 = int(y)
                         x0 = int(x)
 
-                        certainty = cert[y0, x0]
+                        cert = torch.from_numpy(cert)
+                        
+                        certainty_orig = cert[y0, x0]
 
-                        if certainty < 0.08: # or np.random.rand() < certainty: 
-                            names.append((video, cam, image_name_a, image_name_b, kpid, saves))
+                        certainty = weighted_confidence(cert, x0, y0, sigma=2)       
 
-                        # if len(names) > 200:
+                        # import scipy.ndimage
+                        # gaussian_cert = scipy.ndimage.gaussian_filter(cert, sigma=7)
+                        # certainty = gaussian_cert[y0, x0]
+
+                        # adjusted_cert = adjust_certainty(cert)
+                        # certainty = adjusted_cert[y0, x0]
+
+                        # kernel_size = 5 
+                        # half_k = kernel_size // 2
+                        # y_min, y_max = max(0, y0 - half_k), min(cert.shape[0], y0 + half_k + 1)
+                        # x_min, x_max = max(0, x0 - half_k), min(cert.shape[1], x0 + half_k + 1)
+                        # local_certainties = cert[y_min:y_max, x_min:x_max]
+                        # certainty = local_certainties.mean()
+                        # certainty = local_certainties.max()
+
+                        certainty = round(certainty, 2)
+
+                        if certainty > 0.01: # or np.random.rand() < certainty: 
+                            # certainty_orig = certainty_orig.item()
+                            # certainty_orig = round(certainty_orig, 2)
+                            # certainty = certainty_orig * 10000 + certainty
+
+                            names.append((video, cam, image_name_a, image_name_b, kpid, saves, certainty))
+
+                        # if len(names) > 300:
                         #     break
 
         return names
@@ -232,7 +281,25 @@ class MatchesDataset(torch.utils.data.Dataset):
         return image
 
     @staticmethod
-    def _get_patch_boundary(image: Image.Image, center_point, patch_size):
+    def get_patch_boundary(image: Image.Image, center_point, patch_size):
+        image_width, image_height = image.size
+        x, y = center_point
+        half_patch_size = patch_size // 2
+
+        left = max(0, min(x - half_patch_size, image_width - patch_size))
+        upper = max(0, min(y - half_patch_size, image_height - patch_size))
+
+        right, lower = left + patch_size, upper + patch_size
+
+        assert right > left
+        assert right - left == patch_size
+        assert lower > upper
+        assert lower - upper == patch_size
+
+        return left, upper, right, lower
+
+    @staticmethod
+    def _get_patch_boundary2(image: Image.Image, center_point, patch_size):
         image_width, image_height = image.size
         x, y = center_point
         half_patch_size = patch_size // 2
@@ -342,7 +409,7 @@ class MatchesDataset(torch.utils.data.Dataset):
 
     def _prepare_image(self, idx):
         name = self.names[idx]
-        video, cam, image_name_a, image_name_b, kpid, saves = name
+        video, cam, image_name_a, image_name_b, kpid, saves, certainty = name
 
         config.task.video = video
         config.task.cam = cam
@@ -366,7 +433,7 @@ class MatchesDataset(torch.utils.data.Dataset):
             ref_crop_keypoint[0], ref_crop_keypoint[1],
             ref_left, ref_upper, ref_right, ref_lower,
 
-            # tar_crop_keypoint[0], tar_crop_keypoint[1],
+            tar_crop_keypoint[0], tar_crop_keypoint[1],
             tar_left, tar_upper, tar_right, tar_lower,
         ] = saves 
                 
@@ -378,35 +445,13 @@ class MatchesDataset(torch.utils.data.Dataset):
         y0 = int(y)
         x0 = int(x)
 
-        certainty = cert[y0, x0]
-
-        # import scipy.ndimage
-        # gaussian_cert = scipy.ndimage.gaussian_filter(cert, sigma=7)
-        # certainty = gaussian_cert[y0, x0]
-
-        # adjusted_cert = adjust_certainty(cert)
-        # certainty = adjusted_cert[y0, x0]
-
-        # kernel_size = 5 
-        # half_k = kernel_size // 2
-        # y_min, y_max = max(0, y0 - half_k), min(cert.shape[0], y0 + half_k + 1)
-        # x_min, x_max = max(0, x0 - half_k), min(cert.shape[1], x0 + half_k + 1)
-        # local_certainties = cert[y_min:y_max, x_min:x_max]
-        # certainty = local_certainties.mean()
-        # certainty = local_certainties.max()
-
-        certainty = weighted_confidence(cert, x0, y0, sigma=5)
-        
-        # certainty = round(certainty, 1)
-
         x0, y0, x1, y1 = pixel_coords[y0, x0]
         x1, y1 = x1.item(), y1.item()
 
         ref_keypoint = (x0, y0)
         tar_keypoint = (x1, y1)
 
-        return ref_patch, ref_keypoint, tar_patch, tar_keypoint, certainty, cert 
-        # return ref_patch, ref_keypoint, tar_patch, tar_keypoint, certainty
+        return ref_patch, ref_keypoint, tar_patch, tar_keypoint, certainty, cert, tar_crop_keypoint  
 
     def __getitem__(self, idx):
         if not hasattr(self, '_file_all_missing'):
@@ -414,10 +459,9 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         assert hasattr(self, '_file_all_missing')
 
-        ref_patch, ref_keypoint, tar_patch, tar_keypoint, certainty, cert= self._prepare_image(idx)
+        ref_patch, ref_keypoint, tar_patch, tar_keypoint, certainty, cert, tar_crop_keypoint = self._prepare_image(idx)
         
-        return ref_patch, ref_keypoint, tar_patch, tar_keypoint, certainty, cert 
-        # return ref_patch, ref_keypoint, tar_patch, tar_keypoint, certainty
+        return ref_patch, ref_keypoint, tar_patch, tar_keypoint, certainty, cert, tar_crop_keypoint 
 
 
 class MatchesDataModule(L.LightningDataModule):
@@ -429,8 +473,8 @@ class MatchesDataModule(L.LightningDataModule):
 
         self.image_augmentation_no_kp = A.Compose(
             transforms=[
-                A.GaussNoise(p=0.7, std_range=(0.04, 0.07), noise_scale_factor=0.5),
-                A.Defocus(p=0.7, radius=1),
+                # A.GaussNoise(p=0.7, std_range=(0.04, 0.07), noise_scale_factor=0.5),
+                A.Defocus(p=0.6, radius=1),
             ]
         )
 
@@ -456,7 +500,7 @@ class MatchesDataModule(L.LightningDataModule):
                 perturb_target=True,  # True False
 
                 patch_normalize=self.patch_normalize,
-                # image_augmentation_no_kp=self.image_augmentation_no_kp,
+                image_augmentation_no_kp=self.image_augmentation_no_kp,
             )
 
             self.dataset['val'] = MatchesDataset(

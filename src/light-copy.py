@@ -29,6 +29,9 @@ class Light(pl.LightningModule):
         self.learning_rate = config.train.learning_rate
         self.mae = torchmetrics.MeanAbsoluteError()
 
+        self.register_buffer("coords_weight", torch.tensor(1.0))
+        self.register_buffer("conf_weight", torch.tensor(1.0))
+        
         self.save_hyperparameters({
             'learning_rate': self.learning_rate,
         },
@@ -59,50 +62,71 @@ class Light(pl.LightningModule):
         return coords * ((config.image.train_patch_size - 1) / 2) + (config.image.train_patch_size - 1) / 2
 
     @staticmethod
-    def _compute_coords_accuracy_percentage(coords_pred, target, pixels=1):
-        difference = torch.abs(coords_pred - target)
+    def _compute_coords_accuracy_percentage(pred, target, pixels=1):
+        # scaled_pred = Light._denormalize_coords(pred.float())
+        scaled_pred = pred
+
+        difference = torch.abs(scaled_pred - target)
 
         # Check which differences exceed N pixels
         exceeds = (difference > pixels).any(dim=1)
         # Calculate the percentage
-        percentage = (exceeds.sum().item() / coords_pred.shape[0]) * 100
+        percentage = (exceeds.sum().item() / scaled_pred.shape[0]) * 100
 
         return percentage
 
     @staticmethod
-    def _compute_coords_loss(coords_pred_norm, target, target_est):
-        target_norm = self._normalize_coords(target.float())
-        target_est_norm = self._normalize_coords(target_est.float())
+    def _compute_coords_loss3(delta_normalized, target, target_est):
+        normalized_target = Light._normalize_coords(target.float())
+        normalized_target_est = Light._normalize_coords(target_est.float())
 
-        loss = F.mse_loss(coords_pred_norm, normalized_target)
+        delta_target = normalized_target - normalized_target_est  # True delta
+        delta_pred = delta_normalized - normalized_target_est  # Predicted delta
+
+        loss = F.mse_loss(delta_pred, delta_target)  
+
+        # Regularization: Penalize large delta
+        # loss_reg = F.mse_loss(delta_pred, torch.zeros_like(delta_pred))  
+        # loss = loss + 0.1 * loss_reg  
 
         return loss
 
     def _shared_step(self, batch):
-        ref_patches, ref_keypoints, tar_patches, tar_keypoints, confidences, cert, kp_estimates = batch
+        ref_patches, ref_keypoints, tar_patches, tar_keypoints, confidences, cert, tar_est_keypoints = batch
 
-        coords_pred_norm, conf_pred = self.model(
+        delta_pred, conf_pred = self.model(
             ref_patches,
             tar_patches,
             ref_keypoints,
         )
 
-        coords_pred = self._denormalize_coords(coords_pred_norm.float())
-
-        coords_loss = self._compute_coords_loss(
-            coords_pred_norm, 
+        coords_loss = self._compute_coords_loss3(
+            delta_pred, 
             tar_keypoints, 
-            kp_estimates
+            tar_est_keypoints
         )
 
         conf_loss = 0
+
+        delta_pred = self._denormalize_coords(delta_pred)
+        coords_pred = delta_pred + tar_est_keypoints.float() # denormal 
     
         coords_percent_3_pixel = self._compute_coords_accuracy_percentage(coords_pred, tar_keypoints, pixels=3)
         coords_percent_2_pixel = self._compute_coords_accuracy_percentage(coords_pred, tar_keypoints, pixels=2)
         coords_percent_15_pixel = self._compute_coords_accuracy_percentage(coords_pred, tar_keypoints, pixels=1.5)
         coords_percent_1_pixel = self._compute_coords_accuracy_percentage(coords_pred, tar_keypoints, pixels=1)
 
+        # with torch.no_grad():
+        #     loss_ratio = coords_loss / (conf_loss + 1e-6)
+        #     self.coords_weight = 1 / (1 + loss_ratio)
+        #     self.conf_weight = loss_ratio / (1 + loss_ratio)
+
+        # loss = self.coords_weight * coords_loss + self.conf_weight * conf_loss
+
+        # loss = coords_loss + conf_loss * 0.8
         loss = coords_loss
+
+        coords_pred = torch.clamp(coords_pred, -81, 81)
                 
         return loss, coords_loss, coords_pred, conf_loss, conf_pred, coords_percent_3_pixel, coords_percent_2_pixel, coords_percent_15_pixel, coords_percent_1_pixel
 
@@ -255,3 +279,60 @@ class Light(pl.LightningModule):
             lr_monitor_callback,
             summary_callback,
         ]
+
+    @staticmethod
+    def _compute_confidence_loss(pred, confidences):
+        # loss = F.binary_cross_entropy_with_logits(pred.squeeze(1), confidences)
+
+        # threshold = 0.05
+        # confidences = (confidences > threshold).float()
+
+        # loss = F.binary_cross_entropy(pred.squeeze(1), confidences)
+
+        loss = F.mse_loss(pred.squeeze(1), confidences)
+        # loss = F.smooth_l1_loss(pred.squeeze(1), confidences, beta=0.3) 
+        # loss = F.smooth_l1_loss(pred.squeeze(1), confidences)
+        
+        # bar chart over bins of confidence
+
+        return loss
+
+    @staticmethod
+    def _compute_confidence_loss2(conf_pred, coords_pred, confidences, tar_keypoints, sigma=2.0):
+        loss = F.binary_cross_entropy_with_logits(conf_pred.squeeze(1), confidences, reduction='none')
+
+        # Compute Gaussian weights
+        means = tar_keypoints.float()  # Shape: [B, 2]
+        cov_matrix = torch.tensor([[sigma**2, 0], [0, sigma**2]], dtype=torch.float32, device=tar_keypoints.device)
+
+        dist = MultivariateNormal(means, covariance_matrix=cov_matrix.expand(means.shape[0], 2, 2))
+        peak_prob = dist.log_prob(means).exp()  # Shape: [B]
+        scale_factors = confidences / peak_prob
+
+        # Compute weights for predicted coordinates
+        weights = dist.log_prob(coords_pred.float()).exp() * scale_factors.unsqueeze(-1)
+
+        weighted_loss = (loss * weights).mean()
+
+        return weighted_loss
+
+    @staticmethod
+    def _compute_coords_loss(pred, target):
+        normalized_target = Light._normalize_coords(target.float())
+        
+        loss = F.mse_loss(pred, normalized_target) 
+        # loss = F.l1_loss(pred, scaled_target)
+        # loss = F.smooth_l1_loss(pred, scaled_target, beta=0.3) 
+
+        return loss
+
+    @staticmethod
+    def _compute_coords_loss2(pred, target, true_confidences):
+        normalized_target = Light._normalize_coords(target.float())
+        
+        loss = F.mse_loss(pred, normalized_target, reduction='none')  # Shape: [B, 2]
+        weighted_loss = (loss * true_confidences.unsqueeze(-1)).mean()  # Shape: Scalar
+
+        return weighted_loss
+        
+    

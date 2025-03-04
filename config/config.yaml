@@ -2,9 +2,9 @@ log_level: TRACE  # TRACE WARNING
 
 experiment:
     # sun_dune sun_space 
-    model: wed_rama 
-    linux: 50  
-    params: 4mil
+    model: tues_shogun
+    linux: 60 
+    params: 12mil
     heads: 1
     datasets: mix
     stddev: 4
@@ -22,12 +22,14 @@ task:
             all:  []
             
             all_missing:
-                # - MOO10_short_2_panorama
-                - MOO02_hand_puncher_2
-                - MOO03_hand_shooter_easy
+                - MOO01_hand_puncher_1 
+                - MOO02_hand_puncher_2 
+                - MOO03_hand_shooter_easy 
                 - MOO04_hand_shooter_hard
                 - MOO06_inspect_hard
                 - MOO08_mapping_hard
+                - MOO09_short_1_updown
+                - MOO10_short_2_panorama
 
         val:
             normal: []
@@ -36,9 +38,6 @@ task:
             all_missing: # []
                 - MOO05_inspect_easy
                 - MOO07_mapping_easy
-                - MOO09_short_1_updown
-                - MOO10_short_2_panorama
-                - MOO11_short_3_backandforth
 
         test:
             normal: []
@@ -80,7 +79,7 @@ image:
     # [width, height]
     original_image_shape: [640, 480]  # [640, 480]
     crop_image_shape: [ 630, 476 ] # [504, 504] [630, 476]
-    patch_size: 82  # 82  128  64
+    patch_size: 82  # 32  82  128  64
     train_patch_size: 82  
     patch_border: 6 # pixels 2 4 6
     
@@ -99,7 +98,7 @@ train:
     num_sanity_val_steps: 1
     log_every_n_steps: 20 # 100
     accumulate_grad_batches: 6
-    learning_rate: 1e-4 # 1e-4    
+    learning_rate: 1e-3 # 1e-4    
 
 val:
     num_patch_pairs_to_save: 80
