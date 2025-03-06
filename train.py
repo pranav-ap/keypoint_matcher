@@ -53,6 +53,7 @@ def train():
         enable_model_summary=False,
         enable_checkpointing=True,
         gradient_clip_val=1.0,
+        # precision="16-mixed",
     )
 
     trainer.fit(light, datamodule=dm)

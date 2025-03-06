@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import math
 from config import config
+from utils import logger 
 
-torch.set_float32_matmul_precision('medium')
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -27,42 +27,6 @@ def positionalencoding2d(d_model, height, width):
     return pe
 
 
-class BottleneckResNetBlock(nn.Module):
-    expansion = 4  # ResNet bottleneck expands channels by 4x
-
-    def __init__(self, in_channels, out_channels, stride=1):
-        super().__init__()
-        mid_channels = out_channels // self.expansion
-
-        self.block = nn.Sequential(
-            nn.BatchNorm2d(in_channels),
-            nn.ReLU(),
-            nn.Conv2d(in_channels, mid_channels, kernel_size=1, bias=False),  # 1x1 Conv (Reduce)
-            nn.BatchNorm2d(mid_channels),
-            nn.ReLU(),
-            nn.Conv2d(mid_channels, mid_channels, kernel_size=3, stride=stride, padding=1, bias=False),  # 3x3 Conv
-            nn.BatchNorm2d(mid_channels),
-            nn.ReLU(),
-            nn.Conv2d(mid_channels, out_channels, kernel_size=1, bias=False),  # 1x1 Conv (Expand)
-            nn.BatchNorm2d(out_channels),
-        )
-
-        self.shortcut = (
-            nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(out_channels),
-            )
-            if in_channels != out_channels or stride != 1
-            else None
-        )
-
-        self.relu = nn.ReLU()
-
-    def forward(self, x):
-        identity = self.shortcut(x) if self.shortcut else x
-        return self.relu(self.block(x) + identity)
-
-
 def depthwise_separable_conv(in_channels, out_channels, kernel_size=3, stride=1, padding=1):
     return nn.Sequential(
         nn.Conv2d(in_channels, in_channels, kernel_size, stride, padding, groups=in_channels, bias=False),
@@ -78,32 +42,54 @@ def depthwise_separable_conv(in_channels, out_channels, kernel_size=3, stride=1,
 class ResNetBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super().__init__()
-
+        
         # self.block = depthwise_separable_conv(in_channels, out_channels, stride=stride)
 
         self.block = nn.Sequential(
             nn.BatchNorm2d(in_channels),
             nn.ReLU(),
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False),
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False), 
+            
             nn.BatchNorm2d(out_channels),
             nn.ReLU(),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
         )
 
-        self.shortcut = (
-            nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(out_channels),
-            )
-            if in_channels != out_channels or stride != 1
-            else None
-        )
+        self.shortcut = None
 
+        if in_channels != out_channels or stride != 1:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(out_channels)
+            )
+        
         self.relu = nn.ReLU()
 
     def forward(self, x):
-        identity = self.shortcut(x) if self.shortcut else x
-        return self.relu(self.block(x) + identity)
+        identity = x
+        
+        if self.shortcut:
+            identity = self.shortcut(x)
+
+        out = self.block(x)
+        out = out + identity
+
+        out = self.relu(out)
+
+        return out
+
+
+class AttentionBlock(nn.Module):
+    def __init__(self, embed_dim, num_heads=4):
+        super().__init__()
+        self.attn = nn.MultiheadAttention(embed_dim, num_heads, batch_first=True)
+        self.norm = nn.LayerNorm(embed_dim)
+
+    def forward(self, x):
+        x_res = x
+        x, _ = self.attn(x, x, x)
+        x = self.norm(x + x_res)  # Residual connection
+        return x
 
 
 
@@ -129,14 +115,20 @@ class MatcherModel(nn.Module):
         pe = positionalencoding2d(base_channels, patch_size, patch_size).unsqueeze(0)
         self.register_buffer('positional_encoding', pe)
 
-        out_channels = 1024  # 512  1024  2048
+        out_channels = 1024 # 512  1024 
+
+        self.attention = AttentionBlock(out_channels)
 
         self.backbone = nn.Sequential(
             ResNetBlock(base_channels, 128, 1),
             ResNetBlock(128, 128, 1),
-            ResNetBlock(128, 256, 2),
+            
+            ResNetBlock(128, 256, 1),
             ResNetBlock(256, 256, 2),
-            ResNetBlock(256, 512, 2),
+
+            ResNetBlock(256, 512, 1),
+            ResNetBlock(512, 512, 2),
+
             ResNetBlock(512, out_channels, 2),
         )
 
@@ -148,24 +140,27 @@ class MatcherModel(nn.Module):
             nn.BatchNorm1d(128), 
             nn.ReLU(),
 
-            nn.Linear(128, 3),
+            nn.Linear(128, 3), 
+            # nn.BatchNorm1d(3),  
         )
 
-    def forward(self, ref_patches, tar_patches, references, estimates):
-        batch, _, height, width = ref_patches.shape
-
+    def forward(self, ref_patches, tgt_patches, references, estimates):
+        height, width = ref_patches.shape[2], ref_patches.shape[3]
         references = references.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, height, width) / (height - 1)
-        estimates = estimates.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, height, width) / (height - 1)
 
-        x = torch.cat([ref_patches, tar_patches, references], dim=1)
-        x = self.feature_extractor(x) + self.positional_encoding
+        x = torch.cat([ref_patches, tgt_patches, references], dim=1).to(device)
+        x = self.feature_extractor(x)
+        x = x + self.positional_encoding
 
         x = self.backbone(x)
         x = self.global_pool(x)
         x = self.flatten(x)
-        x = self.head(x)
 
-        target_coords = torch.tanh(x[:, :2])
-        target_confidences = torch.sigmoid(x[:, 2].unsqueeze(-1))
+        out = self.head(x)
+
+        target_coords, target_confidences = out[:, :2], out[:, 2].unsqueeze(-1)
+
+        target_coords = torch.tanh(target_coords)
+        target_confidences = torch.sigmoid(target_confidences)
 
         return target_coords, target_confidences

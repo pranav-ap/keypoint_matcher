@@ -39,24 +39,15 @@ class Light(pl.LightningModule):
             ]
         )
 
-    def forward(self, reference_patches, target_patches, reference_coords):
+    def forward(self, reference_patches, target_patches, reference_coords, estimates):
         pred = self.model(
             reference_patches,
             target_patches,
             reference_coords,
+            estimates,
         )
 
         return pred
-
-    @staticmethod
-    def _normalize_coords(coords):
-        """Normalizes coordinates from [0, 31] to [-1, 1] in a numerically stable way."""
-        return (coords - (config.image.train_patch_size - 1) / 2) / ((config.image.train_patch_size - 1) / 2)
-
-    @staticmethod
-    def _denormalize_coords(coords):
-        """Denormalizes coordinates from [-1, 1] back to [0, 31]."""
-        return coords * ((config.image.train_patch_size - 1) / 2) + (config.image.train_patch_size - 1) / 2
 
     @staticmethod
     def _compute_coords_accuracy_percentage(coords_pred, target, pixels=1):
@@ -69,52 +60,53 @@ class Light(pl.LightningModule):
 
         return percentage
 
-    @staticmethod
-    def _compute_coords_loss(coords_pred_norm, target, target_est):
-        target_norm = self._normalize_coords(target.float())
-        target_est_norm = self._normalize_coords(target_est.float())
+    def _compute_coords_loss(self, coords_pred_norm, references, targets, estimates):
+        targets_norm = Light._normalize_coords(targets.float())
+        # estimates_norm = Light._normalize_coords(estimates.float())
 
-        loss = F.mse_loss(coords_pred_norm, normalized_target)
+        loss = F.mse_loss(coords_pred_norm, targets_norm)
 
         return loss
 
     def _shared_step(self, batch):
-        ref_patches, ref_keypoints, tar_patches, tar_keypoints, confidences, cert, kp_estimates = batch
+        ref_patches, references, tar_patches, targets, confidences, cert, estimates = batch
 
         coords_pred_norm, conf_pred = self.model(
             ref_patches,
             tar_patches,
-            ref_keypoints,
+            references,
+            estimates,
         )
 
-        coords_pred = self._denormalize_coords(coords_pred_norm.float())
+        coords_pred = Light._denormalize_coords(coords_pred_norm.float())
 
         coords_loss = self._compute_coords_loss(
             coords_pred_norm, 
-            tar_keypoints, 
-            kp_estimates
+            references,
+            targets, 
+            estimates,
         )
 
         conf_loss = 0
     
-        coords_percent_3_pixel = self._compute_coords_accuracy_percentage(coords_pred, tar_keypoints, pixels=3)
-        coords_percent_2_pixel = self._compute_coords_accuracy_percentage(coords_pred, tar_keypoints, pixels=2)
-        coords_percent_15_pixel = self._compute_coords_accuracy_percentage(coords_pred, tar_keypoints, pixels=1.5)
-        coords_percent_1_pixel = self._compute_coords_accuracy_percentage(coords_pred, tar_keypoints, pixels=1)
+        coords_percent_3_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=3)
+        coords_percent_2_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=2)
+        coords_percent_15_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.5)
+        coords_percent_1_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1)
 
         loss = coords_loss
-                
+
         return loss, coords_loss, coords_pred, conf_loss, conf_pred, coords_percent_3_pixel, coords_percent_2_pixel, coords_percent_15_pixel, coords_percent_1_pixel
 
     def training_step(self, batch, batch_idx):
-        _, _, _, tar_keypoints, _, _, _ = batch
+        _, _, _, targets, _, _, _ = batch
         loss, coords_loss, coords_pred, conf_loss, conf_pred, coords_percent_3_pixel, coords_percent_2_pixel, coords_percent_15_pixel, coords_percent_1_pixel = self._shared_step(batch)
 
         metrics = {
             "train/loss": loss,
             "train/coords_loss": coords_loss,
             "train/confidence_loss": conf_loss,
-            "train/coords_mae": self.mae(coords_pred, tar_keypoints.squeeze(1)),         
+            "train/coords_mae": self.mae(coords_pred, targets.squeeze(1)),         
             "train/coords_percent_1_pixel": coords_percent_1_pixel,
             "train/coords_percent_1.5_pixel": coords_percent_15_pixel,
             "train/coords_percent_2_pixel": coords_percent_2_pixel,
@@ -131,14 +123,14 @@ class Light(pl.LightningModule):
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):
-        _, _, _, tar_keypoints, _, _, _ = batch
+        _, _, _, targets, _, _, _ = batch
         loss, coords_loss, coords_pred, conf_loss, conf_pred, coords_percent_3_pixel, coords_percent_2_pixel, coords_percent_15_pixel, coords_percent_1_pixel = self._shared_step(batch)
 
         metrics = {
             "val/loss": loss,
             "val/coords_loss": coords_loss,
             "val/confidence_loss": conf_loss,
-            "val/coords_mae": self.mae(coords_pred, tar_keypoints.squeeze(1)),         
+            "val/coords_mae": self.mae(coords_pred, targets.squeeze(1)),         
             "val/coords_percent_1_pixel": coords_percent_1_pixel,
             "val/coords_percent_1.5_pixel": coords_percent_15_pixel,
             "val/coords_percent_2_pixel": coords_percent_2_pixel,
@@ -153,38 +145,14 @@ class Light(pl.LightningModule):
 
         return metrics
 
-    @torch.no_grad()
-    def test_step(self, batch, batch_idx):
-        _, _, _, tar_keypoints, _, _ = batch
-        loss, coords_loss, coords_pred, conf_loss, conf_pred, coords_percent_3_pixel, coords_percent_2_pixel, coords_percent_15_pixel, coords_percent_1_pixel = self._shared_step(batch)
-
-        metrics = {
-            "test/loss": loss,
-            "test/coords_loss": coords_loss,
-            "test/confidence_loss": conf_loss,
-            "test/coords_mae": self.mae(coords_pred, tar_keypoints.squeeze(1)),         
-            "test/coords_percent_1_pixel": coords_percent_1_pixel,
-            "test/coords_percent_1.5_pixel": coords_percent_15_pixel,
-            "test/coords_percent_2_pixel": coords_percent_2_pixel,
-            "test/coords_percent_3_pixel": coords_percent_3_pixel,
-        }
-        
-        self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
-
-        if batch_idx == 0:
-            limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(batch, coords_pred, confidence_pred=conf_pred, limit_count=limit_count, stage='test')
-
-        return metrics
-
     def _log_images(self, batch, target_coords, rotation_pred=None, confidence_pred=None, limit_count=None, stage=None):
-        ref_patches, ref_keypoints, tar_patches, tar_keypoints, confidences, cert, _ = batch
+        ref_patches, references, tar_patches, targets, confidences, cert, _ = batch
         
         image_grid = show_batch(
             ref_patches, tar_patches,
-            ref_keypoints, 
+            references, 
 
-            patch_level_target_coords=target_coords, patch_level_target_coords_true=tar_keypoints,
+            patch_level_target_coords=target_coords, patch_level_target_coords_true=targets,
 
             confidences_true=confidences,
             confidence_pred=confidence_pred,
@@ -202,23 +170,17 @@ class Light(pl.LightningModule):
                 name=name,
             )
 
-    def configure_optimizers(self):
-        # optimizer = torch.optim.SGD(
-        #     self.model.parameters(),
-        #     lr=self.learning_rate,
-        #     momentum=0.5,
-        # )
+    def configure_optimizers(self):        
+        # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate, momentum=0.9)
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
 
-        optimizer = torch.optim.AdamW(
-            self.model.parameters(),
-            lr=self.learning_rate
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode='min',
         )
 
         lr_scheduler = {
-            "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(
-                optimizer,
-                mode='min',
-            ),
+            "scheduler": scheduler,
             "monitor": "train/loss",
             "interval": "epoch",
             "frequency": 1,
@@ -255,3 +217,13 @@ class Light(pl.LightningModule):
             lr_monitor_callback,
             summary_callback,
         ]
+
+    @staticmethod
+    def _normalize_coords(coords):
+        """Normalizes coordinates from [0, 81] to [-1, 1] in a numerically stable way."""
+        return (coords - (config.image.train_patch_size - 1) / 2) / ((config.image.train_patch_size - 1) / 2)
+
+    @staticmethod
+    def _denormalize_coords(coords):
+        """Denormalizes coordinates from [-1, 1] back to [0, 81]."""
+        return coords * ((config.image.train_patch_size - 1) / 2) + (config.image.train_patch_size - 1) / 2

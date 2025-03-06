@@ -40,23 +40,24 @@ def crop_image_alb(image: Image.Image, left, upper, right, lower, patch_size=32)
     
 
 def match_collate_fn(batch):
-    ref_patches, ref_keypoints, tar_patches, tar_keypoints, certainties, cert, tar_crop_keypoints = zip(*batch)
+    # ref_patches, references, tar_patches, targets, certainties, cert, estimates = zip(*batch)
+    ref_patches, references, tar_patches, targets, certainties, cert = zip(*batch)
 
     # Convert keypoints from list of tuples to tensor
-    ref_keypoints = torch.tensor(ref_keypoints, dtype=torch.float32)
-    tar_keypoints = torch.tensor(tar_keypoints, dtype=torch.float32)
+    references = torch.tensor(references, dtype=torch.float32)
+    targets = torch.tensor(targets, dtype=torch.float32)
     certainties = torch.tensor(certainties, dtype=torch.float32)
 
-    tar_crop_keypoints = torch.tensor(tar_crop_keypoints, dtype=torch.float32)
+    # estimates = torch.tensor(estimates, dtype=torch.float32)
 
     return (
         torch.cat(ref_patches, dim=0).unsqueeze(1), 
-        ref_keypoints, 
+        references, 
         torch.cat(tar_patches, dim=0).unsqueeze(1), 
-        tar_keypoints,
+        targets,
         certainties,
         torch.stack(cert).unsqueeze(1),
-        tar_crop_keypoints,         
+        # estimates,         
     )
 
 
@@ -169,8 +170,6 @@ class MatchesDataset(torch.utils.data.Dataset):
                         
                         image_name_a, image_name_b, kpid = pair_name.split('_')
 
-                        # gc.collect()
-
                         warp = warp_dataset[()]
             
                         try:
@@ -181,33 +180,31 @@ class MatchesDataset(torch.utils.data.Dataset):
                         
                         saves = saves_dataset[()]
 
-                        # gc.collect()
-
                         assert warp.shape == (config.image.patch_size, config.image.patch_size, 4), f'{warp.shape=}'
                         assert cert.shape == (config.image.patch_size, config.image.patch_size), f'{cert.shape=}'
-                        assert len(saves) == 12, f'{len(saves)=}' # 10 12 
+                        assert len(saves) == 10, f'{len(saves)=}' # 10 12 
 
-                        ref_crop_keypoint = tar_crop_keypoint = [0, 0]
+                        reference = estimate = [0, 0]
 
                         [
-                            ref_crop_keypoint[0], ref_crop_keypoint[1],
+                            reference[0], reference[1],
                             ref_left, ref_upper, ref_right, ref_lower,
 
-                            tar_crop_keypoint[0], tar_crop_keypoint[1],
+                            # estimate[0], estimate[1],
                             tar_left, tar_upper, tar_right, tar_lower,
                         ] = saves 
 
                         desired_patch_size = 82
                         
-                        if not (0 <= ref_crop_keypoint[0] < desired_patch_size and 0 <= ref_crop_keypoint[1] < desired_patch_size):
-                            logger.debug(f'Bad ref crop kp {ref_crop_keypoint=}')
+                        if not (0 <= reference[0] < desired_patch_size and 0 <= reference[1] < desired_patch_size):
+                            logger.debug(f'Bad ref crop kp {reference=}')
                             continue
                         
-                        if not (0 <= tar_crop_keypoint[0] < desired_patch_size and 0 <= tar_crop_keypoint[1] < desired_patch_size):
-                            logger.debug(f'Bad tar crop kp {tar_crop_keypoint=}')
-                            continue
+                        # if not (0 <= estimate[0] < desired_patch_size and 0 <= estimate[1] < desired_patch_size):
+                        #     logger.debug(f'Bad tar crop kp {estimate=}')
+                        #     continue
 
-                        x, y = ref_crop_keypoint
+                        x, y = reference
 
                         y0 = int(y)
                         x0 = int(x)
@@ -242,8 +239,8 @@ class MatchesDataset(torch.utils.data.Dataset):
 
                             names.append((video, cam, image_name_a, image_name_b, kpid, saves, certainty))
 
-                        # if len(names) > 300:
-                        #     break
+                        if len(names) > 300:
+                            break
 
         return names
 
@@ -427,20 +424,20 @@ class MatchesDataset(torch.utils.data.Dataset):
         cert = torch.from_numpy(cert)
         pixel_coords = self._warp_to_pixel_coords(warp)
 
-        ref_crop_keypoint = tar_crop_keypoint = [0, 0]
+        reference = estimate = [0, 0]
 
         [
-            ref_crop_keypoint[0], ref_crop_keypoint[1],
+            reference[0], reference[1],
             ref_left, ref_upper, ref_right, ref_lower,
 
-            tar_crop_keypoint[0], tar_crop_keypoint[1],
+            # estimate[0], estimate[1],
             tar_left, tar_upper, tar_right, tar_lower,
         ] = saves 
                 
         ref_patch = self._prepare_patch(image_name_a, ref_left, ref_upper, ref_right, ref_lower)
         tar_patch = self._prepare_patch(image_name_b, tar_left, tar_upper, tar_right, tar_lower)
 
-        x, y = ref_crop_keypoint
+        x, y = reference
 
         y0 = int(y)
         x0 = int(x)
@@ -451,7 +448,8 @@ class MatchesDataset(torch.utils.data.Dataset):
         ref_keypoint = (x0, y0)
         tar_keypoint = (x1, y1)
 
-        return ref_patch, ref_keypoint, tar_patch, tar_keypoint, certainty, cert, tar_crop_keypoint  
+        # return ref_patch, ref_keypoint, tar_patch, tar_keypoint, certainty, cert, estimate  
+        return ref_patch, ref_keypoint, tar_patch, tar_keypoint, certainty, cert 
 
     def __getitem__(self, idx):
         if not hasattr(self, '_file_all_missing'):
@@ -459,9 +457,11 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         assert hasattr(self, '_file_all_missing')
 
-        ref_patch, ref_keypoint, tar_patch, tar_keypoint, certainty, cert, tar_crop_keypoint = self._prepare_image(idx)
+        # ref_patch, ref_keypoint, tar_patch, tar_keypoint, certainty, cert, estimate = self._prepare_image(idx)
+        ref_patch, ref_keypoint, tar_patch, tar_keypoint, certainty, cert = self._prepare_image(idx)
         
-        return ref_patch, ref_keypoint, tar_patch, tar_keypoint, certainty, cert, tar_crop_keypoint 
+        # return ref_patch, ref_keypoint, tar_patch, tar_keypoint, certainty, cert, estimate 
+        return ref_patch, ref_keypoint, tar_patch, tar_keypoint, certainty, cert 
 
 
 class MatchesDataModule(L.LightningDataModule):
@@ -474,7 +474,7 @@ class MatchesDataModule(L.LightningDataModule):
         self.image_augmentation_no_kp = A.Compose(
             transforms=[
                 # A.GaussNoise(p=0.7, std_range=(0.04, 0.07), noise_scale_factor=0.5),
-                A.Defocus(p=0.6, radius=1),
+                # A.Defocus(p=0.6, radius=1),
             ]
         )
 
@@ -500,7 +500,7 @@ class MatchesDataModule(L.LightningDataModule):
                 perturb_target=True,  # True False
 
                 patch_normalize=self.patch_normalize,
-                image_augmentation_no_kp=self.image_augmentation_no_kp,
+                # image_augmentation_no_kp=self.image_augmentation_no_kp,
             )
 
             self.dataset['val'] = MatchesDataset(

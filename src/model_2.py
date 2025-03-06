@@ -79,16 +79,16 @@ class ResNetBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super().__init__()
 
-        # self.block = depthwise_separable_conv(in_channels, out_channels, stride=stride)
+        self.block = depthwise_separable_conv(in_channels, out_channels, stride=stride)
 
-        self.block = nn.Sequential(
-            nn.BatchNorm2d(in_channels),
-            nn.ReLU(),
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(),
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
-        )
+        # self.block = nn.Sequential(
+        #     nn.BatchNorm2d(in_channels),
+        #     nn.ReLU(),
+        #     nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False),
+        #     nn.BatchNorm2d(out_channels),
+        #     nn.ReLU(),
+        #     nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
+        # )
 
         self.shortcut = (
             nn.Sequential(
@@ -106,37 +106,31 @@ class ResNetBlock(nn.Module):
         return self.relu(self.block(x) + identity)
 
 
-
 class MatcherModel(nn.Module):
     def __init__(self):
         super().__init__()
-
         patch_size = config.image.patch_size
-
-        in_channels = 1 * 2 + 2 # 2 4 
-        base_channels = 128
+        in_channels = 1 + 2
+        base_channels = 256
+        out_channels = 1024 # 1024 2048
 
         self.feature_extractor = nn.Sequential(
             nn.Conv2d(in_channels, 64, 3, 1, 1, bias=False),
             nn.BatchNorm2d(64),
             nn.ReLU(),
 
-            nn.Conv2d(64, base_channels, 3, 1, 1, bias=False),
-            nn.BatchNorm2d(base_channels),
-            nn.ReLU(),
+            ResNetBlock(64, 128, 1),
+            ResNetBlock(128, base_channels, 1),
         )
-        
+
         pe = positionalencoding2d(base_channels, patch_size, patch_size).unsqueeze(0)
         self.register_buffer('positional_encoding', pe)
 
-        out_channels = 1024  # 512  1024  2048
+        in_channels = base_channels * 2
 
         self.backbone = nn.Sequential(
-            ResNetBlock(base_channels, 128, 1),
-            ResNetBlock(128, 128, 1),
-            ResNetBlock(128, 256, 2),
-            ResNetBlock(256, 256, 2),
-            ResNetBlock(256, 512, 2),
+            ResNetBlock(in_channels, 512, 1),
+            ResNetBlock(512, 512, 2),
             ResNetBlock(512, out_channels, 2),
         )
 
@@ -144,28 +138,35 @@ class MatcherModel(nn.Module):
         self.flatten = nn.Flatten()
 
         self.head = nn.Sequential(
-            nn.Linear(out_channels, 128), 
-            nn.BatchNorm1d(128), 
+            nn.Linear(out_channels, 128),
+            nn.BatchNorm1d(128),
             nn.ReLU(),
-
+            
             nn.Linear(128, 3),
         )
 
-    def forward(self, ref_patches, tar_patches, references, estimates):
+    def forward(self, ref_patches, tgt_patches, references, estimates):
         batch, _, height, width = ref_patches.shape
 
         references = references.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, height, width) / (height - 1)
         estimates = estimates.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, height, width) / (height - 1)
 
-        x = torch.cat([ref_patches, tar_patches, references], dim=1)
-        x = self.feature_extractor(x) + self.positional_encoding
+        a = torch.cat([ref_patches, references], dim=1)
+        a = self.feature_extractor(a) + self.positional_encoding
+        
+        b = torch.cat([tgt_patches, estimates], dim=1)
+        b = self.feature_extractor(b) + self.positional_encoding
+
+        x = torch.cat([a, b], dim=1)
 
         x = self.backbone(x)
         x = self.global_pool(x)
         x = self.flatten(x)
-        x = self.head(x)
 
-        target_coords = torch.tanh(x[:, :2])
-        target_confidences = torch.sigmoid(x[:, 2].unsqueeze(-1))
+        out = self.head(x)
+
+        target_coords = torch.tanh(out[:, :2])
+        target_confidences = torch.sigmoid(out[:, 2].unsqueeze(-1))
 
         return target_coords, target_confidences
+

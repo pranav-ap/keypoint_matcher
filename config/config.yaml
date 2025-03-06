@@ -1,14 +1,16 @@
 log_level: TRACE  # TRACE WARNING
 
 experiment:
-    # sun_dune sun_space 
-    model: tues_shogun
+    # model: thur_shogun 
+    # linux: 53
+    
+    model: thur_william 
     linux: 60 
-    params: 12mil
+
+    params: 1mil
     heads: 1
     datasets: mix
     stddev: 4
-    # name: ${experiment.model}_${experiment.linux}_linux_${experiment.params}_${experiment.heads}_heads_${experiment.datasets}_dataset_${experiment.stddev}_stddev
     name: ${experiment.model}_${experiment.linux}_linux_${experiment.params}_${experiment.heads}_heads_${experiment.datasets}_dataset
 
 task:
@@ -22,22 +24,23 @@ task:
             all:  []
             
             all_missing:
-                - MOO01_hand_puncher_1 
-                - MOO02_hand_puncher_2 
-                - MOO03_hand_shooter_easy 
-                - MOO04_hand_shooter_hard
-                - MOO06_inspect_hard
-                - MOO08_mapping_hard
-                - MOO09_short_1_updown
-                - MOO10_short_2_panorama
+                # - MOO01_hand_puncher_1 
+                # - MOO03_hand_shooter_easy 
+                # - MOO04_hand_shooter_hard
+                # - MOO05_inspect_easy
+                # - MOO06_inspect_hard
+                # - MOO08_mapping_hard
+                - MOO07_mapping_easy
+                # - MOO10_short_2_panorama
 
         val:
             normal: []
             blur:  []
             all:  []
-            all_missing: # []
-                - MOO05_inspect_easy
-                - MOO07_mapping_easy
+            all_missing:  []
+                # - MOO02_hand_puncher_2 
+                # - MOO07_mapping_easy
+                # - MOO09_short_1_updown
 
         test:
             normal: []
@@ -71,7 +74,7 @@ paths:
         all: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_all/train/train_data.hdf5
         normal: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_normal/train/train_data.hdf5
         blur: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_blur/train/train_data.hdf5
-        all_missing: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_all_missing/train/train_data.hdf5
+        all_missing: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_all_missing_works_no_est/train/train_data.hdf5
 
     images: ${paths.roots.mav}/${task.cam}/data
 
@@ -79,15 +82,19 @@ image:
     # [width, height]
     original_image_shape: [640, 480]  # [640, 480]
     crop_image_shape: [ 630, 476 ] # [504, 504] [630, 476]
-    patch_size: 82  # 32  82  128  64
+    patch_size: 82  # 32  82  
     train_patch_size: 82  
     patch_border: 6 # pixels 2 4 6
     
 
 train:
-    train_batch_size: 15  
-    val_batch_size: 15
+    train_batch_size: 20  
+    val_batch_size: 20
+    
     num_patches_per_image: 70 # 120
+    
+    accumulate_grad_batches: 2
+    learning_rate: 1e-4 # 1e-4    
 
     fast_dev_run: False  # True False
     overfit_batches: 0
@@ -96,10 +103,8 @@ train:
     max_epochs: 200
     check_val_every_n_epoch: 2
     num_sanity_val_steps: 1
-    log_every_n_steps: 20 # 100
-    accumulate_grad_batches: 6
-    learning_rate: 1e-3 # 1e-4    
-
+    log_every_n_steps: 10 # 100
+    
 val:
     num_patch_pairs_to_save: 80
 
