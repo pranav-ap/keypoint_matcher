@@ -53,6 +53,7 @@ def show_batch(
     
     rotations_true=None, rotations=None, 
     confidences_true=None, confidence_pred=None,
+    estimates=None,
 
     limit_count=None, border_size=2, border_color="white", n_columns=2,
     just_gt=False,
@@ -121,7 +122,7 @@ def show_batch(
         patch = ImageOps.expand(patch, border=border_size, fill=border_color)
         return patch
 
-    def prepare_target_patch(patch, x, y, a, b, rot=None):
+    def prepare_target_patch(patch, x, y, a, b, p, q, rot=None):
         # patch = denormalize(patch)
         patch = min_max_normalize(patch, min_val=0.0, max_val=1.0)  
         patch = to_pil(patch)
@@ -133,6 +134,7 @@ def show_batch(
         
         if not just_gt:
             draw_im.ellipse((x - radius, y - radius, x + radius, y + radius), outline='yellow')
+            draw_im.ellipse((p - radius - 1, q - radius - 1, p + radius - 1, q + radius - 1), outline='blue')
 
         draw_im.rectangle((a - radius - 1, b - radius - 1, a + radius + 1, b + radius + 1), outline='green')
 
@@ -143,6 +145,8 @@ def show_batch(
     for i in range(num_patches):
         reference_patch = reference_patches[i]
         x, y = patch_level_reference_coords[i]
+        p, q = estimates[i]
+
         reference_patch = prepare_patch(reference_patch, x, y, color='red')
 
         rotation_true = f"{rotations_true[i].item():.2f}°" if rotations_true is not None else '-'
@@ -156,7 +160,7 @@ def show_batch(
         target_patch = target_patches[i]
         x, y = patch_level_target_coords[i]
         a, b = patch_level_target_coords_true[i]
-        target_patch = prepare_target_patch(target_patch, x, y, a, b) #, rotations[i].item())
+        target_patch = prepare_target_patch(target_patch, x, y, a, b, p, q) #, rotations[i].item())
 
         row = i // n_columns
         col = i % n_columns

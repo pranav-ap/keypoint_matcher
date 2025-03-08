@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
+import torch.nn.init as init
 import math
+from utils import logger
 from config import config
 
 torch.set_float32_matmul_precision('medium')
@@ -113,51 +115,89 @@ class MatcherModel(nn.Module):
 
         patch_size = config.image.patch_size
 
-        in_channels = 1 * 2 + 2 # 2 4 
-        base_channels = 128
+        in_channels = 6 # 3
+        feature_channels = 64
 
         self.feature_extractor = nn.Sequential(
-            nn.Conv2d(in_channels, 64, 3, 1, 1, bias=False),
-            nn.BatchNorm2d(64),
+            nn.Conv2d(in_channels, 32, 3, 1, 1, bias=False),
+            nn.BatchNorm2d(32),
             nn.ReLU(),
 
-            nn.Conv2d(64, base_channels, 3, 1, 1, bias=False),
-            nn.BatchNorm2d(base_channels),
+            nn.Conv2d(32, feature_channels, 3, 1, 1, bias=False),
+            nn.BatchNorm2d(feature_channels),
             nn.ReLU(),
         )
         
-        pe = positionalencoding2d(base_channels, patch_size, patch_size).unsqueeze(0)
-        self.register_buffer('positional_encoding', pe)
+        self.register_buffer(
+            'positional_encoding', 
+            positionalencoding2d(feature_channels, patch_size, patch_size).unsqueeze(0)
+        )
 
-        out_channels = 1024  # 512  1024  2048
+        out_channels = 512  # 512  1024  2048
 
         self.backbone = nn.Sequential(
-            ResNetBlock(base_channels, 128, 1),
-            ResNetBlock(128, 128, 1),
-            ResNetBlock(128, 256, 2),
+            ResNetBlock(feature_channels, 64, 1),
+
+            ResNetBlock(64, 128, 1),
+            ResNetBlock(128, 256, 1),
+
             ResNetBlock(256, 256, 2),
             ResNetBlock(256, 512, 2),
-            ResNetBlock(512, out_channels, 2),
+            
+            ResNetBlock(512, 512, 2),
+            ResNetBlock(512, 512, 2),
+
+            nn.Conv2d(512, out_channels, kernel_size=1, stride=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(),
         )
 
         self.global_pool = nn.AdaptiveAvgPool2d(1)
         self.flatten = nn.Flatten()
 
         self.head = nn.Sequential(
-            nn.Linear(out_channels, 128), 
-            nn.BatchNorm1d(128), 
+            nn.Linear(out_channels, 256), 
+            nn.BatchNorm1d(256), 
+            nn.ReLU(),
+
+            nn.Linear(256, 128),
+            nn.BatchNorm1d(128),
             nn.ReLU(),
 
             nn.Linear(128, 3),
         )
 
-    def forward(self, ref_patches, tar_patches, references, estimates):
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        """Initializes weights with Kaiming normal initialization for Conv2d layers."""
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                # Kaiming He initialization for Conv2d layers (for ReLU activation)
+                init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    init.zeros_(m.bias)
+            elif isinstance(m, nn.Linear):
+                # Xavier (Glorot) initialization for Linear layers
+                init.xavier_normal_(m.weight)
+                if m.bias is not None:
+                    init.zeros_(m.bias)
+            elif isinstance(m, nn.BatchNorm2d):
+                # Initialize BatchNorm layers
+                init.ones_(m.weight)
+                init.zeros_(m.bias)
+            elif isinstance(m, nn.BatchNorm1d):
+                # Initialize BatchNorm layers
+                init.ones_(m.weight)
+                init.zeros_(m.bias)
+
+    def forward(self, ref_patches, tar_patches, references, estimates=None):
         batch, _, height, width = ref_patches.shape
 
         references = references.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, height, width) / (height - 1)
         estimates = estimates.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, height, width) / (height - 1)
 
-        x = torch.cat([ref_patches, tar_patches, references], dim=1)
+        x = torch.cat([ref_patches, tar_patches, references, estimates], dim=1)
         x = self.feature_extractor(x) + self.positional_encoding
 
         x = self.backbone(x)
@@ -165,7 +205,9 @@ class MatcherModel(nn.Module):
         x = self.flatten(x)
         x = self.head(x)
 
-        target_coords = torch.tanh(x[:, :2])
-        target_confidences = torch.sigmoid(x[:, 2].unsqueeze(-1))
+        coords = torch.tanh(x[:, :2])
+        # coords = x[:, :2]
+        confidences = torch.sigmoid(x[:, 2].unsqueeze(-1))
 
-        return target_coords, target_confidences
+        return coords, confidences
+

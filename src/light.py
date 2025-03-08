@@ -17,6 +17,7 @@ torch.set_float32_matmul_precision('medium')
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+
 class Light(pl.LightningModule):
     def __init__(self, neptune_logger=None, tensorboard_logger=None):
         super().__init__()
@@ -39,7 +40,7 @@ class Light(pl.LightningModule):
             ]
         )
 
-    def forward(self, reference_patches, target_patches, reference_coords, estimates):
+    def forward(self, reference_patches, target_patches, reference_coords, estimates=None):
         pred = self.model(
             reference_patches,
             target_patches,
@@ -59,94 +60,128 @@ class Light(pl.LightningModule):
         percentage = (exceeds.sum().item() / coords_pred.shape[0]) * 100
 
         return percentage
-
-    def _compute_coords_loss(self, coords_pred_norm, references, targets, estimates):
+    
+    def _compute_coords_loss(self, coords_delta_norm_pred, references, targets, estimates=None):
         targets_norm = Light._normalize_coords(targets.float())
-        # estimates_norm = Light._normalize_coords(estimates.float())
+        estimates_norm = Light._normalize_coords(estimates.float())
 
-        loss = F.mse_loss(coords_pred_norm, targets_norm)
+        coords_delta_norm_true = targets_norm - estimates_norm
+        loss = F.l1_loss(coords_delta_norm_pred, coords_delta_norm_true)
+        
+        return loss, coords_delta_norm_true
 
-        return loss
-
-    def _shared_step(self, batch):
+    def _shared_step(self, batch, stage='train'):
         ref_patches, references, tar_patches, targets, confidences, cert, estimates = batch
-
-        coords_pred_norm, conf_pred = self.model(
+        # ref_patches, references, tar_patches, targets, confidences, cert = batch
+    
+        coords_delta_norm_pred, conf_pred = self.model(
             ref_patches,
             tar_patches,
             references,
-            estimates,
+            estimates
         )
 
-        coords_pred = Light._denormalize_coords(coords_pred_norm.float())
+        # Calculate Loss
 
-        coords_loss = self._compute_coords_loss(
-            coords_pred_norm, 
+        coords_delta_pred = coords_delta_norm_pred.float() * ((config.image.train_patch_size - 1) / 2)
+        coords_pred = estimates + coords_delta_pred  
+        
+        coords_loss, coords_delta_norm_true = self._compute_coords_loss(
+            coords_delta_norm_pred, 
             references,
             targets, 
             estimates,
         )
 
+        coords_delta_true = coords_delta_norm_true.float() * ((config.image.train_patch_size - 1) / 2)
+
         conf_loss = 0
-    
-        coords_percent_3_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=3)
-        coords_percent_2_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=2)
-        coords_percent_15_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.5)
-        coords_percent_1_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1)
 
         loss = coords_loss
 
-        return loss, coords_loss, coords_pred, conf_loss, conf_pred, coords_percent_3_pixel, coords_percent_2_pixel, coords_percent_15_pixel, coords_percent_1_pixel
+        # Calculate other metrics
+
+        coords_percent_2_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=2)
+        coords_percent_15_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.5)
+        coords_percent_125_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.25)
+        coords_percent_1_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1)
+
+        coords_mae = self.mae(coords_pred, targets.squeeze(1))
+
+        coords_delta_pred_mean = coords_delta_pred.mean()
+        coords_delta_true_mean = coords_delta_true.mean()
+
+        # Collect
+
+        # clamp for visualization and further usage
+        coords_pred = torch.clamp(coords_pred, min=0.0, max=81.0) 
+    
+        metrics = {
+            f"{stage}/loss": loss,
+            f"{stage}/coords_loss": coords_loss,
+            f"{stage}/conf_loss": conf_loss,
+
+            f"{stage}/coords_mae": coords_mae,
+            f"{stage}/coords_delta_pred_mean": coords_delta_pred_mean,
+            f"{stage}/coords_delta_true_mean": coords_delta_true_mean,
+
+            f"{stage}/coords_percent_2_pixel": coords_percent_2_pixel,
+            f"{stage}/coords_percent_15_pixel": coords_percent_15_pixel,
+            f"{stage}/coords_percent_125_pixel": coords_percent_125_pixel,
+            f"{stage}/coords_percent_1_pixel": coords_percent_1_pixel,
+        }
+
+        return metrics, coords_pred, conf_pred
 
     def training_step(self, batch, batch_idx):
-        _, _, _, targets, _, _, _ = batch
-        loss, coords_loss, coords_pred, conf_loss, conf_pred, coords_percent_3_pixel, coords_percent_2_pixel, coords_percent_15_pixel, coords_percent_1_pixel = self._shared_step(batch)
+        ref_patches, references, tar_patches, targets, confidences, cert, estimates = batch
+        # ref_patches, references, tar_patches, targets, confidences, cert = batch
 
-        metrics = {
-            "train/loss": loss,
-            "train/coords_loss": coords_loss,
-            "train/confidence_loss": conf_loss,
-            "train/coords_mae": self.mae(coords_pred, targets.squeeze(1)),         
-            "train/coords_percent_1_pixel": coords_percent_1_pixel,
-            "train/coords_percent_1.5_pixel": coords_percent_15_pixel,
-            "train/coords_percent_2_pixel": coords_percent_2_pixel,
-            "train/coords_percent_3_pixel": coords_percent_3_pixel,
-        }
+        metrics, coords_pred, conf_pred = self._shared_step(batch, stage='train')
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(batch, coords_pred, confidence_pred=conf_pred, limit_count=limit_count, stage='train')
+            self._log_images(batch, coords_pred, confidence_pred=conf_pred, estimates=estimates, limit_count=limit_count, stage='train')
+
+        loss = metrics['train/loss']
 
         return loss
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):
-        _, _, _, targets, _, _, _ = batch
-        loss, coords_loss, coords_pred, conf_loss, conf_pred, coords_percent_3_pixel, coords_percent_2_pixel, coords_percent_15_pixel, coords_percent_1_pixel = self._shared_step(batch)
+        ref_patches, references, tar_patches, targets, confidences, cert, estimates = batch
+        # ref_patches, references, tar_patches, targets, confidences, cert = batch
 
-        metrics = {
-            "val/loss": loss,
-            "val/coords_loss": coords_loss,
-            "val/confidence_loss": conf_loss,
-            "val/coords_mae": self.mae(coords_pred, targets.squeeze(1)),         
-            "val/coords_percent_1_pixel": coords_percent_1_pixel,
-            "val/coords_percent_1.5_pixel": coords_percent_15_pixel,
-            "val/coords_percent_2_pixel": coords_percent_2_pixel,
-            "val/coords_percent_3_pixel": coords_percent_3_pixel,
-        }
+        metrics, coords_pred, conf_pred = self._shared_step(batch, stage='val')
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(batch, coords_pred, confidence_pred=conf_pred, limit_count=limit_count, stage='val')
-
+            self._log_images(batch, coords_pred, confidence_pred=conf_pred, estimates=estimates, limit_count=limit_count, stage='val')
+        
         return metrics
 
-    def _log_images(self, batch, target_coords, rotation_pred=None, confidence_pred=None, limit_count=None, stage=None):
-        ref_patches, references, tar_patches, targets, confidences, cert, _ = batch
+    @torch.no_grad()
+    def test_step(self, batch, batch_idx):
+        ref_patches, references, tar_patches, targets, confidences, cert, estimates = batch
+        # ref_patches, references, tar_patches, targets, confidences, cert = batch
+
+        metrics, coords_pred, conf_pred = self._shared_step(batch, stage='test')
+
+        self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
+
+        if batch_idx == 0:
+            limit_count = config.val.num_patch_pairs_to_save
+            self._log_images(batch, coords_pred, confidence_pred=conf_pred, estimates=estimates, limit_count=limit_count, stage='val')
+        
+        return metrics
+
+    def _log_images(self, batch, target_coords, rotation_pred=None, confidence_pred=None, estimates=None, limit_count=None, stage=None):
+        ref_patches, references, tar_patches, targets, confidences, cert, estimates = batch
+        # ref_patches, references, tar_patches, targets, confidences, cert = batch
         
         image_grid = show_batch(
             ref_patches, tar_patches,
@@ -156,6 +191,8 @@ class Light(pl.LightningModule):
 
             confidences_true=confidences,
             confidence_pred=confidence_pred,
+
+            estimates=estimates,
 
             limit_count=limit_count,
             n_columns=8,
@@ -172,12 +209,10 @@ class Light(pl.LightningModule):
 
     def configure_optimizers(self):        
         # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate, momentum=0.9)
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate) # weight_decay=0.1
 
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,
-            mode='min',
-        )
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min')
+        # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
 
         lr_scheduler = {
             "scheduler": scheduler,
@@ -227,3 +262,4 @@ class Light(pl.LightningModule):
     def _denormalize_coords(coords):
         """Denormalizes coordinates from [-1, 1] back to [0, 81]."""
         return coords * ((config.image.train_patch_size - 1) / 2) + (config.image.train_patch_size - 1) / 2
+
