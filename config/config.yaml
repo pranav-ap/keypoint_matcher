@@ -1,13 +1,17 @@
 log_level: TRACE  # TRACE WARNING
 
 experiment:
+
     # model: shogun 
     # linux: 53 
     
     model: mando
     linux: 60 
+    
+    # model: dune
+    # linux: 57 
 
-    params: 1mil
+    params: 13mil
     heads: 1
     datasets: mix
     stddev: 4
@@ -24,28 +28,37 @@ task:
             all:  []
             
             all_missing:
-                - MOO01_hand_puncher_1
+                - MOO02_hand_puncher_2
+                - MOO03_hand_shooter_easy
+                - MOO04_hand_shooter_hard
+                - MOO05_inspect_easy
+                - MOO06_inspect_hard
+                - MOO07_mapping_easy
+
+                # - MOO01_hand_puncher_1
                 # - MOO02_hand_puncher_2
                 # - MOO03_hand_shooter_easy
-                # - MOO04_hand_shooter_hard
                 # - MOO05_inspect_easy
-                # - MOO06_inspect_hard
-            
+                # - MOO09_short_1_updown
+
         val:
             normal: []
             blur:  []
             all:  []
             all_missing: # []
                 - MOO01_hand_puncher_1
+                - MOO08_mapping_hard
+                - MOO09_short_1_updown
+                - MOO10_short_2_panorama
 
-                # - MOO07_mapping_easy
-                # - MOO08_mapping_hard
-                # - MOO09_short_1_updown
+                # - MOO04_hand_shooter_hard
+                # - MOO06_inspect_hard
                 # - MOO10_short_2_panorama
 
         test:
             normal: []
             all: []
+            all_missing: [] 
 
     cam: cam0
     cams:
@@ -80,6 +93,7 @@ paths:
 
     images: ${paths.roots.mav}/${task.cam}/data
 
+
 image:
     # [width, height]
     original_image_shape: [640, 480]  # [640, 480]
@@ -95,8 +109,8 @@ train:
     
     num_patches_per_image: 70 # 120
     
-    accumulate_grad_batches: 2
-    learning_rate: 1e-4 # 1e-4    
+    accumulate_grad_batches: 4
+    learning_rate: 1e-5 # 1e-4    
 
     fast_dev_run: False  # True False
     overfit_batches: 0

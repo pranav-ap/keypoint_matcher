@@ -202,15 +202,22 @@ class MatchesDataset(torch.utils.data.Dataset):
 
                         certainty = round(certainty, 2)
 
-                        # if certainty > 0.01: # or np.random.rand() < certainty: 
+                        if certainty > 0.02: # 0.01 
                             # certainty_orig = certainty_orig.item()
                             # certainty_orig = round(certainty_orig, 2)
                             # certainty = certainty_orig * 10000 + certainty
 
-                        names.append((video, cam, image_name_a, image_name_b, kpid, saves, certainty))
+                            certainty = 1
 
-                        # if len(names) > 300:
+                            names.append((video, cam, image_name_a, image_name_b, kpid, saves, certainty))
+                        else:
+                            certainty = 0
+                            names.append((video, cam, image_name_a, image_name_b, kpid, saves, certainty))
+
+                        # if len(names) > 600:
                         #     break
+                
+                logger.info(f'{len(names)=}')
         
         excess = len(names) % config.train.train_batch_size
         if excess:
@@ -421,7 +428,6 @@ class MatchesDataset(torch.utils.data.Dataset):
         target = (x1, y1)
 
         return ref_patch, reference, tar_patch, target, certainty, cert, estimate  
-        # return ref_patch, reference, tar_patch, target, certainty, cert 
 
     def __getitem__(self, idx):
         if not hasattr(self, '_file_all_missing'):
@@ -430,10 +436,8 @@ class MatchesDataset(torch.utils.data.Dataset):
         assert hasattr(self, '_file_all_missing')
 
         ref_patch, reference, tar_patch, target, certainty, cert, estimate = self._prepare_image(idx)
-        # ref_patch, reference, tar_patch, target, certainty, cert = self._prepare_image(idx)
         
         return ref_patch, reference, tar_patch, target, certainty, cert, estimate 
-        # return ref_patch, reference, tar_patch, target, certainty, cert 
 
 
 class MatchesDataModule(L.LightningDataModule):
@@ -446,7 +450,7 @@ class MatchesDataModule(L.LightningDataModule):
         self.image_augmentation_no_kp = A.Compose(
             transforms=[
                 # A.GaussNoise(p=0.7, std_range=(0.04, 0.07), noise_scale_factor=0.5),
-                # A.Defocus(p=0.6, radius=1),
+                A.Defocus(p=0.3, radius=1),
             ]
         )
 
@@ -472,7 +476,7 @@ class MatchesDataModule(L.LightningDataModule):
                 perturb_target=True,  # True False
 
                 patch_normalize=self.patch_normalize,
-                # image_augmentation_no_kp=self.image_augmentation_no_kp,
+                image_augmentation_no_kp=self.image_augmentation_no_kp,
             )
 
             self.dataset['val'] = MatchesDataset(

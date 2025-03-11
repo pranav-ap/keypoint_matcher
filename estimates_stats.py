@@ -5,7 +5,7 @@ import numpy as np
 
 
 tracks = [
-    'MOO01_hand_puncher_1', # remove for track_debug
+    # 'MOO01_hand_puncher_1', # remove for track_debug
     'MOO02_hand_puncher_2', 
     'MOO03_hand_shooter_easy', 
     'MOO04_hand_shooter_hard',
@@ -19,19 +19,19 @@ tracks = [
 ]
 
 
-def compute_coords_accuracy_percentage(coords_pred, target, pixels=1):
-    difference = np.abs(coords_pred - target)
+def compute_coords_accuracy_percentage(estimates, target, pixels=1):
+    difference = np.abs(estimates - target)
     exceeds = np.any(difference > pixels, axis=1)
-    percentage = (np.sum(exceeds) / coords_pred.shape[0]) * 100
+    percentage = (np.sum(exceeds) / estimates.shape[0]) * 100
     return percentage
 
 
-def compute_average_error(coords_pred, targets):
+def compute_error_stats(estimates, targets):
     # Calculate Euclidean distance between predicted and target coordinates
-    error = np.sqrt(np.sum((coords_pred - targets) ** 2, axis=1))
-    average_error = np.mean(error)
-    return average_error
-
+    error = np.sqrt(np.sum((estimates - targets) ** 2, axis=1))
+    mean_error = np.mean(error)
+    std_error = np.std(error)
+    return mean_error, std_error
 
 
 def main():
@@ -39,6 +39,8 @@ def main():
     all_data = []    
 
     for track in tracks:
+        print(f'Loading {track=}')
+
         for cam in ['cam0', 'cam1']:
             folder_path = f"/home/stud/ath/ath_ws/datasets/{filter_type}/{track}/{cam}/"
             csv_files = glob.glob(os.path.join(folder_path, "*.csv"))
@@ -60,22 +62,23 @@ def main():
 
     print(f'len(combined_df)={len(combined_df)}')
 
-    coords_pred = combined_df[["x_guess", "y_guess"]].to_numpy(dtype=np.float32)
+    estimates = combined_df[["x_guess", "y_guess"]].to_numpy(dtype=np.float32)
     targets = combined_df[["x", "y"]].to_numpy(dtype=np.float32)
 
-    coords_percent_2_pixel = compute_coords_accuracy_percentage(coords_pred, targets, pixels=2)
-    coords_percent_15_pixel = compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.5)
-    coords_percent_125_pixel = compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.25)
-    coords_percent_1_pixel = compute_coords_accuracy_percentage(coords_pred, targets, pixels=1)
+    coords_percent_2_pixel = compute_coords_accuracy_percentage(estimates, targets, pixels=2)
+    coords_percent_15_pixel = compute_coords_accuracy_percentage(estimates, targets, pixels=1.5)
+    coords_percent_125_pixel = compute_coords_accuracy_percentage(estimates, targets, pixels=1.25)
+    coords_percent_1_pixel = compute_coords_accuracy_percentage(estimates, targets, pixels=1)
 
-    avg_error = compute_average_error(coords_pred, targets)
+    mean_error, std_error = compute_error_stats(estimates, targets)
 
     print(f"Accuracy within 2 pixels: {coords_percent_2_pixel:.2f}%")
     print(f"Accuracy within 1.5 pixels: {coords_percent_15_pixel:.2f}%")
     print(f"Accuracy within 1.25 pixels: {coords_percent_125_pixel:.2f}%")
     print(f"Accuracy within 1 pixel: {coords_percent_1_pixel:.2f}%")
-    print(f"Average error (Euclidean distance) : {avg_error:.2f} pixels")
-
+    
+    print(f"Mean error (Euclidean distance): {mean_error:.2f} pixels")
+    print(f"Standard deviation of error: {std_error:.2f} pixels")
 
 if __name__ == '__main__':
     main()
@@ -90,7 +93,9 @@ Accuracy within 2 pixels: 87.56%
 Accuracy within 1.5 pixels: 91.84%
 Accuracy within 1.25 pixels: 91.84%
 Accuracy within 1 pixel: 91.84%
-Average error: 19.27 pixels
+
+Mean error (Euclidean distance): 19.27 pixels
+Standard deviation of error: 18.48 pixels
 
 => track_debug
 
@@ -100,6 +105,9 @@ Accuracy within 2 pixels: 88.62%
 Accuracy within 1.5 pixels: 92.96%
 Accuracy within 1.25 pixels: 92.96%
 Accuracy within 1 pixel: 92.96%
-Average error (Euclidean distance) : 20.81 pixels
+
+Mean error (Euclidean distance): 20.81 pixels
+Standard deviation of error: 21.75 pixels
 
 """
+

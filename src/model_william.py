@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.init as init
 import math
 from utils import logger
 from config import config
@@ -11,9 +10,6 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def positionalencoding2d(d_model, height, width):
-    """
-    Notes: min max = -1 to 1
-    """
     if d_model % 4 != 0:
         raise ValueError(f"Cannot use sin/cos positional encoding with odd dimension (got dim={d_model})")
 
@@ -90,7 +86,6 @@ class ResNetBlock(nn.Module):
             nn.BatchNorm2d(in_channels),
             nn.ReLU(),
             nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False),
-
             nn.BatchNorm2d(out_channels),
             nn.ReLU(),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
@@ -112,13 +107,14 @@ class ResNetBlock(nn.Module):
         return self.relu(self.block(x) + identity)
 
 
+
 class MatcherModel(nn.Module):
     def __init__(self):
         super().__init__()
 
         patch_size = config.image.patch_size
 
-        in_channels = 3 # 3  6 
+        in_channels = 1 * 2 + 4 # 2 4 
         feature_channels = 32
 
         self.feature_extractor = nn.Sequential(
@@ -127,28 +123,25 @@ class MatcherModel(nn.Module):
             nn.ReLU(),
         )
         
-        self.register_buffer(
-            'positional_encoding', 
-            positionalencoding2d(feature_channels, patch_size, patch_size).unsqueeze(0)
-        )
+        pe = positionalencoding2d(feature_channels, patch_size, patch_size).unsqueeze(0)
+        self.register_buffer('positional_encoding', pe)
 
         out_channels = 512  # 512  1024  2048
 
         self.backbone = nn.Sequential(
-            ResNetBlock(feature_channels * 2, 64, 1),
+            ResNetBlock(feature_channels, 64, 1),
+            
             ResNetBlock(64, 64, 1),
             ResNetBlock(64, 128, 1),
-         
-            ResNetBlock(128, 128, 1),
-            ResNetBlock(128, 128, 1),   
+
+            ResNetBlock(128, 128, 1),            
+            ResNetBlock(128, 128, 2),
             ResNetBlock(128, 256, 2),
             
-            ResNetBlock(256, 256, 1),
             ResNetBlock(256, 256, 2),
             ResNetBlock(256, 512, 2),
             
             ResNetBlock(512, 512, 2),
-            # ResNetBlock(512, 512, 2),
             
             nn.Conv2d(512, out_channels, kernel_size=1, stride=1),
             nn.BatchNorm2d(out_channels),
@@ -159,55 +152,29 @@ class MatcherModel(nn.Module):
         self.flatten = nn.Flatten()
 
         self.head = nn.Sequential(
-            nn.Linear(out_channels, 256), 
-            nn.BatchNorm1d(256), 
+            nn.Linear(out_channels, 128), 
+            nn.BatchNorm1d(128), 
             nn.ReLU(),
 
-            nn.Linear(256, 3),
+            nn.Linear(128, 128),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+
+            nn.Linear(128, 64),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+
+            nn.Linear(64, 3),
         )
-
-        self._initialize_weights()
-
-    def _initialize_weights(self):
-        """Initializes weights with Kaiming normal initialization for Conv2d layers."""
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                # Kaiming He initialization for Conv2d layers (for ReLU activation)
-                init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-                if m.bias is not None:
-                    init.zeros_(m.bias)
-            elif isinstance(m, nn.Linear):
-                # Xavier (Glorot) initialization for Linear layers
-                init.xavier_normal_(m.weight)
-                if m.bias is not None:
-                    init.zeros_(m.bias)
-            elif isinstance(m, nn.BatchNorm2d):
-                # Initialize BatchNorm layers
-                init.ones_(m.weight)
-                init.zeros_(m.bias)
-            elif isinstance(m, nn.BatchNorm1d):
-                # Initialize BatchNorm layers
-                init.ones_(m.weight)
-                init.zeros_(m.bias)
 
     def forward(self, ref_patches, tar_patches, references, estimates=None):
         batch, _, height, width = ref_patches.shape
 
-        # normalize to 0 to 1
         references = references.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, height, width) / (height - 1)
         estimates = estimates.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, height, width) / (height - 1)
-        # normalize to -1 to 1
-        references = references * 2 - 1
-        estimates = estimates * 2 - 1
-        
-        a = torch.cat([ref_patches, references], dim=1)
-        a = self.feature_extractor(a) + self.positional_encoding
 
-        b = torch.cat([tar_patches, estimates], dim=1)
-        b = self.feature_extractor(b) + self.positional_encoding
-
-        x = torch.cat([a, b], dim=1)
-        # x = a + b
+        x = torch.cat([ref_patches, tar_patches, references, estimates], dim=1)
+        x = self.feature_extractor(x) + self.positional_encoding
 
         x = self.backbone(x)
         x = self.global_pool(x)
@@ -215,6 +182,7 @@ class MatcherModel(nn.Module):
         x = self.head(x)
 
         coords = torch.tanh(x[:, :2])
+        # coords = x[:, :2]
         confidences = torch.sigmoid(x[:, 2].unsqueeze(-1))
 
         return coords, confidences

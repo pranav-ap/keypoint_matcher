@@ -61,43 +61,68 @@ class Light(pl.LightningModule):
 
         return percentage
     
+    def _compute_coords_loss2(self, coords_delta_norm_pred, references, targets, estimates=None):
+        targets_norm = Light._normalize_coords(targets.float())
+        estimates_norm = Light._normalize_coords(estimates.float())
+
+        coords_delta_norm_true = targets_norm - estimates_norm
+        loss = F.l1_loss(coords_delta_norm_pred, coords_delta_norm_true)
+
+        ## Penalize when prediction is too far away from estimates
+
+        threshold = 20
+        threshold = (threshold - (82 - 1) / 2) / ((82 - 1) / 2) 
+
+        displacement = torch.norm(coords_delta_norm_pred, dim=-1)
+
+        # Gaussian penalty mean=0, std_dev=threshold
+        out_of_bounds_penalty = torch.exp(- (displacement ** 2) / (2 * threshold ** 2))
+        out_of_bounds_penalty = torch.log(out_of_bounds_penalty + 1e-6)
+
+        loss = loss + 0.2 * torch.mean(out_of_bounds_penalty)
+
+        return loss, coords_delta_norm_true
+
     def _compute_coords_loss(self, coords_delta_norm_pred, references, targets, estimates=None):
         targets_norm = Light._normalize_coords(targets.float())
         estimates_norm = Light._normalize_coords(estimates.float())
 
         coords_delta_norm_true = targets_norm - estimates_norm
         loss = F.l1_loss(coords_delta_norm_pred, coords_delta_norm_true)
-        
-        return loss, coords_delta_norm_true
+
+        return loss
+
+    @staticmethod
+    def _compute_confidence_loss(conf_pred, confidences):
+        # loss = F.binary_cross_entropy(conf_pred.squeeze(1), confidences)
+        loss = F.mse_loss(conf_pred.squeeze(1), confidences)
+        return loss
 
     def _shared_step(self, batch, stage='train'):
         ref_patches, references, tar_patches, targets, confidences, cert, estimates = batch
-        # ref_patches, references, tar_patches, targets, confidences, cert = batch
     
         coords_delta_norm_pred, conf_pred = self.model(
             ref_patches,
             tar_patches,
             references,
             estimates
-        )
+        ) 
 
         # Calculate Loss
 
         coords_delta_pred = coords_delta_norm_pred.float() * ((config.image.train_patch_size - 1) / 2)
         coords_pred = estimates + coords_delta_pred  
         
-        coords_loss, coords_delta_norm_true = self._compute_coords_loss(
+        coords_loss = self._compute_coords_loss(
             coords_delta_norm_pred, 
             references,
             targets, 
             estimates,
         )
 
-        coords_delta_true = coords_delta_norm_true.float() * ((config.image.train_patch_size - 1) / 2)
+        conf_loss = 0 # 0.2 * self._compute_confidence_loss(conf_pred, confidences)
 
-        conf_loss = 0
-
-        loss = coords_loss
+        loss = coords_loss # + conf_loss
 
         # Calculate other metrics
 
@@ -107,9 +132,6 @@ class Light(pl.LightningModule):
         coords_percent_1_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1)
 
         coords_mae = self.mae(coords_pred, targets.squeeze(1))
-
-        coords_delta_pred_mean = coords_delta_pred.mean()
-        coords_delta_true_mean = coords_delta_true.mean()
 
         # Collect
 
@@ -122,8 +144,6 @@ class Light(pl.LightningModule):
             f"{stage}/conf_loss": conf_loss,
 
             f"{stage}/coords_mae": coords_mae,
-            f"{stage}/coords_delta_pred_mean": coords_delta_pred_mean,
-            f"{stage}/coords_delta_true_mean": coords_delta_true_mean,
 
             f"{stage}/coords_percent_2_pixel": coords_percent_2_pixel,
             f"{stage}/coords_percent_15_pixel": coords_percent_15_pixel,
@@ -208,8 +228,8 @@ class Light(pl.LightningModule):
             )
 
     def configure_optimizers(self):        
-        # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate, momentum=0.9)
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate) # weight_decay=0.1
+        # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate, momentum=0.6)
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate, weight_decay=0.1)
 
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min')
         # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
