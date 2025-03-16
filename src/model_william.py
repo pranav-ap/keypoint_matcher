@@ -182,7 +182,6 @@ class MatcherModel(nn.Module):
         x = self.head(x)
 
         coords = torch.tanh(x[:, :2])
-        # coords = x[:, :2]
         confidences = torch.sigmoid(x[:, 2].unsqueeze(-1))
 
         return coords, confidences

@@ -15,6 +15,7 @@ import lightning as L
 import torch
 from PIL import Image
 from torchvision import transforms as T
+import scipy
 
 torch.set_float32_matmul_precision('medium')
 
@@ -61,16 +62,7 @@ def match_collate_fn(batch):
 
 def weighted_confidence(confidences, x, y, sigma=3):
     """
-    Computes an overall confidence score for a 2D confidence tensor, emphasizing a specific (x, y) coordinate.
-
-    Args:
-        confidences (torch.Tensor): 2D tensor of confidence values (can be on CUDA).
-        x (int): Target x-coordinate.
-        y (int): Target y-coordinate.
-        sigma (float): Controls how much emphasis is given to (x, y). Lower sigma = more local focus.
-
-    Returns:
-        float: Weighted overall confidence.
+    Lower sigma = more local focus.
     """
     if confidences.is_cuda:
         confidences = confidences.cpu().numpy()
@@ -185,34 +177,16 @@ class MatchesDataset(torch.utils.data.Dataset):
                         x, y = reference
                         y0, x0 = int(y), int(x)
                         
-                        # certainty_orig = cert[y0, x0]
+                        # certainty = cert[y0, x0]
                         certainty = weighted_confidence(cert, x0, y0, sigma=2)       
 
-                        # import scipy.ndimage
-                        # gaussian_cert = scipy.ndimage.gaussian_filter(cert, sigma=7)
+                        # gaussian_cert = scipy.ndimage.gaussian_filter(cert, sigma=2)
                         # certainty = gaussian_cert[y0, x0]
 
-                        # kernel_size = 5 
-                        # half_k = kernel_size // 2
-                        # y_min, y_max = max(0, y0 - half_k), min(cert.shape[0], y0 + half_k + 1)
-                        # x_min, x_max = max(0, x0 - half_k), min(cert.shape[1], x0 + half_k + 1)
-                        # local_certainties = cert[y_min:y_max, x_min:x_max]
-                        # certainty = local_certainties.mean()
-                        # certainty = local_certainties.max()
+                        certainty = round(certainty.item(), 2)
 
-                        certainty = round(certainty, 2)
-
-                        if certainty > 0.02: # 0.01 
-                            # certainty_orig = certainty_orig.item()
-                            # certainty_orig = round(certainty_orig, 2)
-                            # certainty = certainty_orig * 10000 + certainty
-
-                            certainty = 1
-
-                            names.append((video, cam, image_name_a, image_name_b, kpid, saves, certainty))
-                        else:
-                            certainty = 0
-                            names.append((video, cam, image_name_a, image_name_b, kpid, saves, certainty))
+                        # if certainty > 0.01: 
+                        names.append((video, cam, image_name_a, image_name_b, kpid, saves, certainty))
 
                         # if len(names) > 600:
                         #     break

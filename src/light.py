@@ -11,11 +11,8 @@ from config import config
 from utils import show_batch, get_tensor_grid, logger
 from .model import MatcherModel
 
-torch.set_float32_matmul_precision('medium')
-
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 
 class Light(pl.LightningModule):
@@ -61,28 +58,6 @@ class Light(pl.LightningModule):
 
         return percentage
     
-    def _compute_coords_loss2(self, coords_delta_norm_pred, references, targets, estimates=None):
-        targets_norm = Light._normalize_coords(targets.float())
-        estimates_norm = Light._normalize_coords(estimates.float())
-
-        coords_delta_norm_true = targets_norm - estimates_norm
-        loss = F.l1_loss(coords_delta_norm_pred, coords_delta_norm_true)
-
-        ## Penalize when prediction is too far away from estimates
-
-        threshold = 20
-        threshold = (threshold - (82 - 1) / 2) / ((82 - 1) / 2) 
-
-        displacement = torch.norm(coords_delta_norm_pred, dim=-1)
-
-        # Gaussian penalty mean=0, std_dev=threshold
-        out_of_bounds_penalty = torch.exp(- (displacement ** 2) / (2 * threshold ** 2))
-        out_of_bounds_penalty = torch.log(out_of_bounds_penalty + 1e-6)
-
-        loss = loss + 0.2 * torch.mean(out_of_bounds_penalty)
-
-        return loss, coords_delta_norm_true
-
     def _compute_coords_loss(self, coords_delta_norm_pred, references, targets, estimates=None):
         targets_norm = Light._normalize_coords(targets.float())
         estimates_norm = Light._normalize_coords(estimates.float())
@@ -229,7 +204,7 @@ class Light(pl.LightningModule):
 
     def configure_optimizers(self):        
         # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate, momentum=0.6)
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate, weight_decay=0.1)
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate) # weight_decay=0.1
 
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min')
         # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)

@@ -22,9 +22,11 @@ dependencies:
     - diffusers
     - neptune
     - torchinfo
+    - torchview
     - pip:
         - albumentations
         - opencv-python
         - tensorboard
         - grad-cam
+        - graphviz 
         

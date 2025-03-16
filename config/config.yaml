@@ -2,16 +2,16 @@ log_level: TRACE  # TRACE WARNING
 
 experiment:
 
-    # model: shogun 
-    # linux: 53 
+    model: shogun
+    linux: 53 
     
-    model: mando
-    linux: 60 
+    # model: mando
+    # linux: 60 
     
-    # model: dune
+    # model: micky 
     # linux: 57 
 
-    params: 13mil
+    params: 14mil
     heads: 1
     datasets: mix
     stddev: 4
@@ -27,12 +27,12 @@ task:
             blur: []
             all:  []
             
-            all_missing:
-                - MOO02_hand_puncher_2
-                - MOO03_hand_shooter_easy
-                - MOO04_hand_shooter_hard
-                - MOO05_inspect_easy
-                - MOO06_inspect_hard
+            all_missing: 
+                # - MOO02_hand_puncher_2
+                # - MOO03_hand_shooter_easy
+                # - MOO04_hand_shooter_hard
+                # - MOO05_inspect_easy
+                # - MOO06_inspect_hard
                 - MOO07_mapping_easy
 
                 # - MOO01_hand_puncher_1
@@ -45,11 +45,13 @@ task:
             normal: []
             blur:  []
             all:  []
-            all_missing: # []
-                - MOO01_hand_puncher_1
-                - MOO08_mapping_hard
-                - MOO09_short_1_updown
-                - MOO10_short_2_panorama
+            all_missing:  []
+                # - MOO07_mapping_easy
+
+                # - MOO01_hand_puncher_1
+                # - MOO08_mapping_hard
+                # - MOO09_short_1_updown
+                # - MOO10_short_2_panorama
 
                 # - MOO04_hand_shooter_hard
                 # - MOO06_inspect_hard
@@ -104,13 +106,13 @@ image:
     
 
 train:
-    train_batch_size: 25  
-    val_batch_size: 25
+    train_batch_size: 8 # 20  
+    val_batch_size: 8
     
     num_patches_per_image: 70 # 120
     
     accumulate_grad_batches: 4
-    learning_rate: 1e-5 # 1e-4    
+    learning_rate: 1e-5   # 1e-4    
 
     fast_dev_run: False  # True False
     overfit_batches: 0
