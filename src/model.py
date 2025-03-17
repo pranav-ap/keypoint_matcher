@@ -1,47 +1,43 @@
 import torch
 import torch.nn as nn
 import torch.nn.init as init
+import torch.nn.functional as F
 import math
 from utils import logger
 from config import config
 
+torch.set_float32_matmul_precision('medium')
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def posemb_sincos_2d(h, w, dim, temperature: int = 10_000, dtype=torch.float32):
-    assert dim % 4 == 0, "feature dimension must be a multiple of 4 for sincos emb"
+def positionalencoding2d(d_model, height, width):
+    assert d_model % 4 == 0, f"Cannot use sin/cos positional encoding with odd dimension (got dim={d_model})"
 
-    y, x = torch.meshgrid(torch.arange(h, dtype=dtype), torch.arange(w, dtype=dtype), indexing="ij")
-    
-    d_half = dim // 2  # Half of the embedding for X, half for Y
-    omega = torch.arange(d_half // 2, dtype=dtype) / (d_half // 2 - 1)
-    omega = 1.0 / (temperature ** omega)  # Frequency scaling
+    pe = torch.zeros(d_model, height, width, requires_grad=False)
+    d_model = d_model // 2
+    div_term = torch.exp(torch.arange(0., d_model, 2) * -(math.log(10000.0) / d_model))
 
-    x_enc = x[..., None] * omega  # (h, w, d_half/2)
-    y_enc = y[..., None] * omega  # (h, w, d_half/2)
+    pos_w = torch.arange(width).unsqueeze(1)
+    pos_h = torch.arange(height).unsqueeze(1)
 
-    pe_x = torch.cat((x_enc.sin(), x_enc.cos()), dim=-1)  # (h, w, d_half)
-    pe_y = torch.cat((y_enc.sin(), y_enc.cos()), dim=-1)  # (h, w, d_half)
-
-    pe = torch.cat((pe_x, pe_y), dim=-1)  # (h, w, dim)
-    pe = pe.permute(2, 0, 1)  # (dim, h, w)
+    pe[0:d_model:2, :, :] = torch.sin(pos_w * div_term).transpose(0, 1).unsqueeze(1).repeat(1, height, 1)
+    pe[1:d_model:2, :, :] = torch.cos(pos_w * div_term).transpose(0, 1).unsqueeze(1).repeat(1, height, 1)
+    pe[d_model::2, :, :] = torch.sin(pos_h * div_term).transpose(0, 1).unsqueeze(2).repeat(1, 1, width)
+    pe[d_model + 1::2, :, :] = torch.cos(pos_h * div_term).transpose(0, 1).unsqueeze(2).repeat(1, 1, width)
 
     return pe
 
-
+    
 class PreActBasicBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super().__init__()
 
-        self.block = nn.Sequential(
-            nn.BatchNorm2d(in_channels),
-            nn.ReLU(),
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False),
+        self.bn1 = nn.BatchNorm2d(in_channels)
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
 
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(),
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
-        )
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
 
         self.shortcut = None
 
@@ -51,8 +47,14 @@ class PreActBasicBlock(nn.Module):
             )
 
     def forward(self, x):
+        out = F.relu(self.bn1(x))
+        
         identity = self.shortcut(x) if self.shortcut else x
-        return self.block(x) + identity
+        
+        out = self.conv1(out)
+        out = self.conv2(F.relu(self.bn2(out)))
+        
+        return out + identity
 
 
 class MatcherModel(nn.Module):
@@ -61,37 +63,43 @@ class MatcherModel(nn.Module):
 
         patch_size = config.image.patch_size
 
-        patch_channels = 1 
-        embed_dims = 512 # 64
+        in_channels = 1 
+        embedding_length = 64
+        out_channels = 512  # 512 1024 2048
 
-        # self.to_patch_embedding = nn.Sequential(
-        #     nn.Conv2d(patch_channels, embed_dims, 3, 1, 1, bias=False),
-        # )
+        self.to_patch_embedding = nn.Sequential(
+            nn.Conv2d(in_channels, embedding_length, 3, 1, 1, bias=False),
+            nn.BatchNorm2d(embedding_length),
+        )
         
         self.register_buffer(
             'positional_embedding', 
-            posemb_sincos_2d(h=patch_size, w=patch_size, dim=embed_dims).unsqueeze(0)
+            positionalencoding2d(embedding_length, patch_size, patch_size).unsqueeze(0)
         )
 
-        out_channels = 512  # 512 1024 2048
-        
         self.backbone = nn.ModuleList([
-            PreActBasicBlock(patch_channels * 2, 128, 1),
+            PreActBasicBlock(embedding_length * 2, 128, 1),
+
+            PreActBasicBlock(128, 128, 1), 
+            PreActBasicBlock(128, 128, 1),
             PreActBasicBlock(128, 256, 2),
-            # PreActBasicBlock(256, 512, 2),
-            PreActBasicBlock(256, out_channels, 2),
+            
+            PreActBasicBlock(256, 256, 2),
+            PreActBasicBlock(256, 256, 2),
+            PreActBasicBlock(256, 256, 2),
+
+            PreActBasicBlock(256, 512, 2),
+            PreActBasicBlock(512, 512, 2),
+            
+            nn.Conv2d(512, out_channels, kernel_size=1, stride=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(),
         ])
 
         self.global_pool = nn.AdaptiveAvgPool2d(1)
         self.flatten = nn.Flatten()
 
-        self.head = nn.Sequential(
-            nn.Linear(out_channels + 4, 128), 
-            nn.BatchNorm1d(128), 
-            nn.ReLU(),
-
-            nn.Linear(128, 3),
-        )
+        self.head = nn.Linear(out_channels + 4, 3)
 
         self._initialize_weights()
 
@@ -109,29 +117,24 @@ class MatcherModel(nn.Module):
         Patch Embedding
         """
 
-        # ref_patches = self.to_patch_embedding(ref_patches) + self.positional_embedding
-        # tar_patches = self.to_patch_embedding(tar_patches) + self.positional_embedding
+        ref_patches = self.to_patch_embedding(ref_patches) + self.positional_embedding
+        tar_patches = self.to_patch_embedding(tar_patches) + self.positional_embedding
 
         """
-        PreActBasicBlock ResNet Backbone
+        PreActBasicBlock ResNet 
         """
 
         x = torch.cat([ref_patches, tar_patches], dim=1)
-
+        
         logger.debug(f'before backbone {x.shape=}')
 
         for layer in self.backbone: 
             x = layer(x)
-            logger.debug(f'{x.shape=}')
-        
-        logger.debug(f'backbone done!')
-
-        x = x + self.positional_embedding
-        logger.debug(f'{x.shape=}')
-
+            logger.debug(f'after layer {x.shape=}')
+            
         x = self.global_pool(x)
         logger.debug(f'after pooling {x.shape=}')
-
+        
         x = self.flatten(x)
         logger.debug(f'after flatten {x.shape=}')
 
@@ -144,14 +147,14 @@ class MatcherModel(nn.Module):
         x = self.head(x)
 
         """
-        Final Activation
+        Final Activations
         """
 
         coords = torch.tanh(x[:, :2])
         confidences = torch.sigmoid(x[:, 2].unsqueeze(-1))
 
-        return coords, 
-        
+        return coords, confidences
+
     def _initialize_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -172,3 +175,4 @@ class MatcherModel(nn.Module):
                 # Initialize BatchNorm layers
                 init.ones_(m.weight)
                 init.zeros_(m.bias)
+                
