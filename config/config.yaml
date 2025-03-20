@@ -4,13 +4,16 @@ experiment:
 
     # model: shogun
     # linux: 53 
-    
-    model: mando
-    linux: 60 
-    
-    # model: micky 
-    # linux: 57 
 
+    # model: jason
+    # linux: 75
+    
+    model: micky 
+    linux: 57 
+
+    # model: mando
+    # linux: 60 
+    
     params: 14mil
     heads: 1
     datasets: mix
@@ -28,34 +31,37 @@ task:
             all:  []
             
             all_missing: 
-                # - MOO02_hand_puncher_2
+                # training
+                # - MOO04_hand_shooter_hard
+                # - MOO05_inspect_easy
+                # - MOO06_inspect_hard
+                # - MOO07_mapping_easy
+
+                # distance calc 
+                - MOO01_hand_puncher_1
+                - MOO02_hand_puncher_2
                 - MOO03_hand_shooter_easy
                 - MOO04_hand_shooter_hard
                 - MOO05_inspect_easy
                 - MOO06_inspect_hard
                 - MOO07_mapping_easy
-
-                # - MOO01_hand_puncher_1
-                # - MOO02_hand_puncher_2
-                # - MOO03_hand_shooter_easy
-                # - MOO05_inspect_easy
-                # - MOO09_short_1_updown
+                - MOO08_mapping_hard
+                - MOO09_short_1_updown
+                - MOO10_short_2_panorama
 
         val:
             normal: []
             blur:  []
             all:  []
-            all_missing: # []
+            all_missing: []
+                # training
                 # - MOO07_mapping_easy
-
+                # - MOO03_hand_shooter_easy
                 # - MOO01_hand_puncher_1
-                - MOO08_mapping_hard
-                - MOO09_short_1_updown
-                - MOO10_short_2_panorama
-
-                # - MOO04_hand_shooter_hard
-                # - MOO06_inspect_hard
+                # - MOO08_mapping_hard
+                # - MOO09_short_1_updown
                 # - MOO10_short_2_panorama
+
 
         test:
             normal: []
@@ -74,7 +80,6 @@ task:
 paths:
     roots:
         ws: /home/stud/ath/ath_ws
-        # ws: D:/thesis_code
         mav: ${paths.roots.ws}/datasets/${task.dataset}/${task.video}/mav0
         project: ${paths.roots.ws}/keypoint_matcher
         output: ${paths.roots.project}/output/${experiment.name}
@@ -106,13 +111,13 @@ image:
     
 
 train:
-    train_batch_size: 8 # 20  
-    val_batch_size: 8
+    train_batch_size: 12 # 20  
+    val_batch_size: 12
     
     num_patches_per_image: 70 # 120
     
     accumulate_grad_batches: 4
-    learning_rate: 1e-5   # 1e-4    
+    learning_rate: 1e-4   # 1e-4    
 
     fast_dev_run: False  # True False
     overfit_batches: 0

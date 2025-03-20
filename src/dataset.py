@@ -2,7 +2,7 @@ from config import config
 from utils import logger, min_max_normalize
 
 import os
-import gc 
+import gc
 from dataclasses import dataclass
 from typing import Dict, Optional
 
@@ -37,7 +37,7 @@ def crop_image_alb(image: Image.Image, left, upper, right, lower, patch_size=32)
     assert patch.size[0] == patch_size
 
     return patch
-    
+
 
 def match_collate_fn(batch):
     ref_patches, references, tar_patches, targets, certainties, cert, estimates = zip(*batch)
@@ -50,13 +50,13 @@ def match_collate_fn(batch):
     estimates = torch.tensor(estimates, dtype=torch.float32)
 
     return (
-        torch.cat(ref_patches, dim=0).unsqueeze(1), 
-        references, 
-        torch.cat(tar_patches, dim=0).unsqueeze(1), 
+        torch.cat(ref_patches, dim=0).unsqueeze(1),
+        references,
+        torch.cat(tar_patches, dim=0).unsqueeze(1),
         targets,
         certainties,
         torch.stack(cert).unsqueeze(1),
-        estimates,         
+        estimates,
     )
 
 
@@ -85,7 +85,7 @@ def weighted_confidence(confidences, x, y, sigma=3):
 class MatchesDataset(torch.utils.data.Dataset):
     # noinspection PyTypeChecker
     def __init__(self,
-                 stage, 
+                 stage,
                  perturb_target=False,
                  patch_normalize=None,
                  image_augmentation_no_kp=None,
@@ -136,23 +136,23 @@ class MatchesDataset(torch.utils.data.Dataset):
 
                         if not isinstance(warp_dataset, h5py.Dataset) or not isinstance(cert_dataset, h5py.Dataset) or not isinstance(saves_dataset, h5py.Dataset):
                             continue
-                        
+
                         image_name_a, image_name_b, kpid = pair_name.split('_')
 
                         warp = warp_dataset[()]
-            
+
                         try:
                             cert = cert_dataset[()]
                             cert = torch.from_numpy(cert)
                         except Exception as e:
                             logger.debug('oops')
                             continue
-                        
+
                         saves = saves_dataset[()]
 
                         assert warp.shape == (config.image.patch_size, config.image.patch_size, 4), f'{warp.shape=}'
                         assert cert.shape == (config.image.patch_size, config.image.patch_size), f'{cert.shape=}'
-                        assert len(saves) == 12, f'{len(saves)=}' # 10 12 
+                        assert len(saves) == 12, f'{len(saves)=}' # 10 12
 
                         reference = estimate = [0, 0]
 
@@ -162,40 +162,40 @@ class MatchesDataset(torch.utils.data.Dataset):
 
                             estimate[0], estimate[1],
                             tar_left, tar_upper, tar_right, tar_lower,
-                        ] = saves 
+                        ] = saves
 
                         desired_patch_size = 82
-                        
+
                         if not (0 <= reference[0] < desired_patch_size and 0 <= reference[1] < desired_patch_size):
                             logger.debug(f'Bad ref crop kp {reference=}')
                             continue
-                        
+
                         if not (0 <= estimate[0] < desired_patch_size and 0 <= estimate[1] < desired_patch_size):
                             logger.debug(f'Bad tar crop kp {estimate=}')
                             continue
 
                         x, y = reference
                         y0, x0 = int(y), int(x)
-                        
+
                         # certainty = cert[y0, x0]
-                        certainty = weighted_confidence(cert, x0, y0, sigma=2)       
+                        certainty = weighted_confidence(cert, x0, y0, sigma=2)
 
                         # gaussian_cert = scipy.ndimage.gaussian_filter(cert, sigma=2)
                         # certainty = gaussian_cert[y0, x0]
 
                         certainty = round(certainty.item(), 2)
 
-                        # if certainty > 0.01: 
-                        names.append((video, cam, image_name_a, image_name_b, kpid, saves, certainty))
+                        if certainty > 0.01:
+                            names.append((video, cam, image_name_a, image_name_b, kpid, saves, certainty))
 
                         # if len(names) > 600:
                         #     break
-                
+
                 logger.info(f'{len(names)=}')
-        
+
         excess = len(names) % config.train.train_batch_size
         if excess:
-            names = names[:-excess] 
+            names = names[:-excess]
 
         return names
 
@@ -226,7 +226,7 @@ class MatchesDataset(torch.utils.data.Dataset):
         image_path = os.path.join(config.paths.images, f'{image_name}.png')
         mode = 'L' # 'RGB'
         image = Image.open(image_path).convert(mode)
-        
+
         # w, h = config.image.crop_image_shape
         # image = self.crop_from_center(image, w, h)
 
@@ -308,11 +308,11 @@ class MatchesDataset(torch.utils.data.Dataset):
         keypoint = keypoints[0][0], keypoints[0][1]
 
         return patch, keypoint
-    
+
     def _warp_to_pixel_coords(self, warp):
         desired_patch_size = config.image.patch_size
         w, h = desired_patch_size, desired_patch_size # config.image.crop_image_shape
-        
+
         warp1 = warp[..., :2]
         warp1 = (
             torch.stack(
@@ -352,10 +352,10 @@ class MatchesDataset(torch.utils.data.Dataset):
             )
 
             patch = Image.fromarray(transformed['image'])
-        
+
         if self.patch_normalize:
             patch = self.patch_normalize(patch)
-            patch = min_max_normalize(patch, min_val=0.0, max_val=1.0) 
+            patch = min_max_normalize(patch, min_val=0.0, max_val=1.0)
 
         return patch
 
@@ -367,7 +367,7 @@ class MatchesDataset(torch.utils.data.Dataset):
         config.task.cam = cam
 
         f = self._file_all_missing
-        
+
         warp_group = f[f'{video}/{cam}/matcher/warp']
         cert_group = f[f'{video}/{cam}/matcher/certainty']
 
@@ -387,8 +387,8 @@ class MatchesDataset(torch.utils.data.Dataset):
 
             estimate[0], estimate[1],
             tar_left, tar_upper, tar_right, tar_lower,
-        ] = saves 
-                
+        ] = saves
+
         ref_patch = self._prepare_patch(image_name_a, ref_left, ref_upper, ref_right, ref_lower)
         tar_patch = self._prepare_patch(image_name_b, tar_left, tar_upper, tar_right, tar_lower)
 
@@ -401,7 +401,7 @@ class MatchesDataset(torch.utils.data.Dataset):
         reference = (x0, y0)
         target = (x1, y1)
 
-        return ref_patch, reference, tar_patch, target, certainty, cert, estimate  
+        return ref_patch, reference, tar_patch, target, certainty, cert, estimate
 
     def __getitem__(self, idx):
         if not hasattr(self, '_file_all_missing'):
@@ -410,8 +410,8 @@ class MatchesDataset(torch.utils.data.Dataset):
         assert hasattr(self, '_file_all_missing')
 
         ref_patch, reference, tar_patch, target, certainty, cert, estimate = self._prepare_image(idx)
-        
-        return ref_patch, reference, tar_patch, target, certainty, cert, estimate 
+
+        return ref_patch, reference, tar_patch, target, certainty, cert, estimate
 
 
 class MatchesDataModule(L.LightningDataModule):
@@ -442,7 +442,7 @@ class MatchesDataModule(L.LightningDataModule):
         ])
 
         self.dataset: Dict[str, MatchesDataset] = {}
-    
+
     def setup(self, stage=None):
         if stage == "fit":
             self.dataset['train'] = MatchesDataset(

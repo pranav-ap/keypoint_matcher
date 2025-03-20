@@ -109,26 +109,30 @@ def main():
                 errors.append(error)
         
         mean_error = np.mean(track_errors) if track_errors else float('nan')
+        median_error = np.median(track_errors) if track_errors else float('nan')
         std_error = np.std(track_errors) if track_errors else float('nan')
         min_error = np.min(track_errors)
         max_error = np.max(track_errors)
             
         logger.info(
-            f"Mean Distance Error {video}: {mean_error:.4f}, "
+            f"{video}: Mean : {mean_error:.4f}, "
             f"Std Dev: {std_error:.4f}, Min: {min_error:.4f}, Max: {max_error:.4f} "
+            f"Median: {median_error:.4f} "
             f"(Samples: {len(track_errors)})"
         )
 
     f.close()
 
     mean_error = np.mean(errors) if errors else float('nan')
+    median_error = np.median(errors) if errors else float('nan')
     std_error = np.std(errors) if errors else float('nan')
     min_error = np.min(errors)
     max_error = np.max(errors)
         
     logger.info(
-        f"Overall Mean Distance Error: {mean_error:.4f}, "
+        f"Overall Error: {mean_error:.4f}, "
         f"Std Dev: {std_error:.4f}, Min: {min_error:.4f}, Max: {max_error:.4f} "
+        f"Median: {median_error:.4f} "
         f"(Total Samples: {len(errors)})"
     )
     

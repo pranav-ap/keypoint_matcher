@@ -12,9 +12,6 @@ from utils import show_batch, get_tensor_grid, logger
 from .model import MatcherModel
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
 class Light(pl.LightningModule):
     def __init__(self, neptune_logger=None, tensorboard_logger=None):
         super().__init__()
@@ -22,7 +19,7 @@ class Light(pl.LightningModule):
         self.neptune_logger = neptune_logger
         self.tensorboard_logger = tensorboard_logger
 
-        self.model = MatcherModel().to(device)
+        self.model = MatcherModel() 
 
         self.learning_rate = config.train.learning_rate
         self.mae = torchmetrics.MeanAbsoluteError()
@@ -37,7 +34,7 @@ class Light(pl.LightningModule):
             ]
         )
 
-    def forward(self, reference_patches, target_patches, reference_coords, estimates=None):
+    def forward(self, reference_patches, target_patches, reference_coords, estimates=None):    
         pred = self.model(
             reference_patches,
             target_patches,
