@@ -8,11 +8,11 @@ experiment:
     # model: jason
     # linux: 75
     
-    model: micky 
-    linux: 57 
+    # model: micky 
+    # linux: 57 
 
-    # model: mando
-    # linux: 60 
+    model: mando
+    linux: 60 
     
     params: 14mil
     heads: 1
@@ -32,36 +32,35 @@ task:
             
             all_missing: 
                 # training
-                # - MOO04_hand_shooter_hard
-                # - MOO05_inspect_easy
-                # - MOO06_inspect_hard
-                # - MOO07_mapping_easy
-
-                # distance calc 
-                - MOO01_hand_puncher_1
                 - MOO02_hand_puncher_2
                 - MOO03_hand_shooter_easy
                 - MOO04_hand_shooter_hard
                 - MOO05_inspect_easy
                 - MOO06_inspect_hard
                 - MOO07_mapping_easy
-                - MOO08_mapping_hard
-                - MOO09_short_1_updown
-                - MOO10_short_2_panorama
+
+                # distance calc 
+                # - MOO01_hand_puncher_1
+                # - MOO02_hand_puncher_2
+                # - MOO03_hand_shooter_easy
+                # - MOO04_hand_shooter_hard
+                # - MOO05_inspect_easy
+                # - MOO06_inspect_hard
+                # - MOO07_mapping_easy
+                # - MOO08_mapping_hard
+                # - MOO09_short_1_updown
+                # - MOO10_short_2_panorama
 
         val:
             normal: []
             blur:  []
             all:  []
-            all_missing: []
+            all_missing: # []
                 # training
-                # - MOO07_mapping_easy
-                # - MOO03_hand_shooter_easy
-                # - MOO01_hand_puncher_1
-                # - MOO08_mapping_hard
-                # - MOO09_short_1_updown
-                # - MOO10_short_2_panorama
-
+                - MOO01_hand_puncher_1
+                - MOO08_mapping_hard
+                - MOO09_short_1_updown
+                - MOO10_short_2_panorama
 
         test:
             normal: []
@@ -122,7 +121,7 @@ train:
     fast_dev_run: False  # True False
     overfit_batches: 0
 
-    patience: 10
+    patience: 15
     max_epochs: 200
     check_val_every_n_epoch: 2
     num_sanity_val_steps: 1

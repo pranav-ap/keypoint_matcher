@@ -62,32 +62,40 @@ class MatcherModel(nn.Module):
         patch_size = config.image.patch_size
 
         in_channels = 1 
-        embedding_length = 128
-        out_channels = 512  # 512 1024 2048
+        embedding_length = 256
+        out_channels = 512  # 256 512 1024 2048
 
         self.to_patch_embedding = nn.Sequential(
             nn.Conv2d(in_channels, embedding_length, 3, 1, 1, bias=False),
             nn.BatchNorm2d(embedding_length),
         )
         
+        # self.positional_embedding = nn.Parameter(
+        #     positionalencoding2d(embedding_length, patch_size, patch_size).unsqueeze(0)
+        # )
+        
         self.register_buffer(
             'positional_embedding', 
             positionalencoding2d(embedding_length, patch_size, patch_size).unsqueeze(0)
         )
-        
+
         self.backbone = nn.ModuleList([
             PreActBasicBlock(embedding_length, 256, 1),
-            PreActBasicBlock(256, 256, 1),
+            PreActBasicBlock(256, 256, 2),
+            PreActBasicBlock(256, 256, 2),
+            PreActBasicBlock(256, 256, 2),
+
+            PreActBasicBlock(256, 512, 2),
+            PreActBasicBlock(512, 512, 2),
             
-            nn.Conv2d(256, out_channels, kernel_size=1, stride=1),
+            nn.Conv2d(512, out_channels, kernel_size=1, stride=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(),
         ])
 
-        self.global_pool = nn.AdaptiveAvgPool2d(1)
-        self.flatten = nn.Flatten()
+        # self.global_pool = nn.AdaptiveAvgPool2d(1)
         
-        flat_length = 512 + 2  # 512 1024
+        flat_length = 4608 + 2 # 1024  2048 
         self.head = nn.Linear(flat_length * 2, 3)
 
         self._initialize_weights()
@@ -99,15 +107,15 @@ class MatcherModel(nn.Module):
         references = references / (height - 1)
         estimates = estimates / (height - 1)
         # normalize to -1 to 1
-        # references = references * 2 - 1
-        # estimates = estimates * 2 - 1
+        references = references * 2 - 1
+        estimates = estimates * 2 - 1
 
         """
         Patch Embedding
         """
-
-        ref_patches = self.to_patch_embedding(ref_patches) @ (1 + self.positional_embedding)
-        tar_patches = self.to_patch_embedding(tar_patches) @ (1 + self.positional_embedding)
+        
+        ref_patches = self.to_patch_embedding(ref_patches) * self.positional_embedding
+        tar_patches = self.to_patch_embedding(tar_patches) * self.positional_embedding
 
         """
         PreActBasicBlock ResNet 
@@ -118,20 +126,14 @@ class MatcherModel(nn.Module):
             tar_patches = layer(tar_patches)
         
         # logger.debug(f'1 {ref_patches.shape=}')
-        
-        ref_patches = self.global_pool(ref_patches)
-        # logger.debug(f'2 {ref_patches.shape=}')
-        
-        tar_patches = self.global_pool(tar_patches)
-        
-        ref_patches = self.flatten(ref_patches)
-        # logger.debug(f'3 {ref_patches.shape=}')
-        
-        tar_patches = self.flatten(tar_patches)
+        ref_patches = torch.flatten(ref_patches, start_dim=1)  
+        tar_patches = torch.flatten(tar_patches, start_dim=1)  
         
         """
         Linear Layer
         """
+        
+        # logger.debug(f'2 {ref_patches.shape=}')
         
         x = torch.cat([ref_patches, references, tar_patches, estimates], dim=1)
         x = self.head(x)
