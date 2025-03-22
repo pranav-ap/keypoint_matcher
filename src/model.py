@@ -62,17 +62,12 @@ class MatcherModel(nn.Module):
         patch_size = config.image.patch_size
 
         in_channels = 1 
-        embedding_length = 256
-        out_channels = 512  # 256 512 1024 2048
+        embedding_length = 32
+        out_channels = 512 
 
         self.to_patch_embedding = nn.Sequential(
             nn.Conv2d(in_channels, embedding_length, 3, 1, 1, bias=False),
-            nn.BatchNorm2d(embedding_length),
         )
-        
-        # self.positional_embedding = nn.Parameter(
-        #     positionalencoding2d(embedding_length, patch_size, patch_size).unsqueeze(0)
-        # )
         
         self.register_buffer(
             'positional_embedding', 
@@ -80,23 +75,15 @@ class MatcherModel(nn.Module):
         )
 
         self.backbone = nn.ModuleList([
-            PreActBasicBlock(embedding_length, 256, 1),
-            PreActBasicBlock(256, 256, 2),
-            PreActBasicBlock(256, 256, 2),
-            PreActBasicBlock(256, 256, 2),
-
-            PreActBasicBlock(256, 512, 2),
-            PreActBasicBlock(512, 512, 2),
-            
-            nn.Conv2d(512, out_channels, kernel_size=1, stride=1),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(),
+            PreActBasicBlock(embedding_length * 2, 128, 1),
+            PreActBasicBlock(128, 256, 1),
+            PreActBasicBlock(256, 512, 1),
+            PreActBasicBlock(512, out_channels, 2),
         ])
 
-        # self.global_pool = nn.AdaptiveAvgPool2d(1)
-        
-        flat_length = 4608 + 2 # 1024  2048 
-        self.head = nn.Linear(flat_length * 2, 3)
+        self.global_pool = nn.AdaptiveAvgPool2d(1)
+       
+        self.head = nn.Linear(out_channels + 4, 3)
 
         self._initialize_weights()
 
@@ -116,18 +103,25 @@ class MatcherModel(nn.Module):
         
         ref_patches = self.to_patch_embedding(ref_patches) * self.positional_embedding
         tar_patches = self.to_patch_embedding(tar_patches) * self.positional_embedding
+        logger.debug(f'1 {ref_patches.shape=}')
 
         """
         PreActBasicBlock ResNet 
         """
 
-        for layer in self.backbone: 
-            ref_patches = layer(ref_patches)
-            tar_patches = layer(tar_patches)
+        x = torch.cat([ref_patches, tar_patches], dim=1)
+        logger.debug(f'2 {x.shape=}')
         
-        # logger.debug(f'1 {ref_patches.shape=}')
-        ref_patches = torch.flatten(ref_patches, start_dim=1)  
-        tar_patches = torch.flatten(tar_patches, start_dim=1)  
+        for layer in self.backbone: 
+            x = layer(x)
+            
+        logger.debug(f'3 {x.shape=}')
+        
+        x = self.global_pool(x)
+        
+        logger.debug(f'3.5 {x.shape=}')
+        x = torch.flatten(x, start_dim=1)  
+        logger.debug(f'4 {x.shape=}')
         
         """
         Linear Layer
@@ -135,8 +129,10 @@ class MatcherModel(nn.Module):
         
         # logger.debug(f'2 {ref_patches.shape=}')
         
-        x = torch.cat([ref_patches, references, tar_patches, estimates], dim=1)
+        x = torch.cat([x, references, estimates], dim=1)  
+        logger.debug(f'5 {x.shape=}')
         x = self.head(x)
+        logger.debug(f'6 {x.shape=}')
 
         """
         Final Activations

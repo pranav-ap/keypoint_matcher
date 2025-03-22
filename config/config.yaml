@@ -1,4 +1,4 @@
-log_level: TRACE  # TRACE WARNING
+log_level: WARNING  # TRACE WARNING
 
 experiment:
 
@@ -8,11 +8,11 @@ experiment:
     # model: jason
     # linux: 75
     
-    # model: micky 
-    # linux: 57 
+    model: micky 
+    linux: 57 
 
-    model: mando
-    linux: 60 
+    # model: mando
+    # linux: 60 
     
     params: 14mil
     heads: 1
@@ -55,7 +55,7 @@ task:
             normal: []
             blur:  []
             all:  []
-            all_missing: # []
+            all_missing: #  []
                 # training
                 - MOO01_hand_puncher_1
                 - MOO08_mapping_hard
@@ -110,8 +110,8 @@ image:
     
 
 train:
-    train_batch_size: 12 # 20  
-    val_batch_size: 12
+    train_batch_size: 20 # 20  12 
+    val_batch_size: 20
     
     num_patches_per_image: 70 # 120
     
