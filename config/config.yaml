@@ -32,9 +32,9 @@ task:
             
             all_missing: 
                 # training
-                - MOO02_hand_puncher_2
-                - MOO03_hand_shooter_easy
-                - MOO04_hand_shooter_hard
+                # - MOO02_hand_puncher_2
+                # - MOO03_hand_shooter_easy
+                # - MOO04_hand_shooter_hard
                 - MOO05_inspect_easy
                 - MOO06_inspect_hard
                 - MOO07_mapping_easy
@@ -57,7 +57,7 @@ task:
             all:  []
             all_missing: #  []
                 # training
-                - MOO01_hand_puncher_1
+                # - MOO01_hand_puncher_1
                 - MOO08_mapping_hard
                 - MOO09_short_1_updown
                 - MOO10_short_2_panorama

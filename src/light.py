@@ -66,9 +66,19 @@ class Light(pl.LightningModule):
 
     @staticmethod
     def _compute_confidence_loss(conf_pred, confidences):
-        # loss = F.binary_cross_entropy(conf_pred.squeeze(1), confidences)
-        loss = F.mse_loss(conf_pred.squeeze(1), confidences)
+        loss = F.binary_cross_entropy(conf_pred.squeeze(1), confidences)
+        # loss = F.mse_loss(conf_pred.squeeze(1), confidences)
         return loss
+
+    @staticmethod
+    def _compute_confidence_loss_2(conf_pred, confidences, gamma=2.0, alpha=0.25):
+        conf_pred = conf_pred.squeeze(1)
+        bce_loss = F.binary_cross_entropy(conf_pred, confidences, reduction='none')
+        p_t = conf_pred * confidences + (1 - conf_pred) * (1 - confidences)
+        focal_weight = alpha * confidences + (1 - alpha) * (1 - confidences)
+        focal_loss = focal_weight * (1 - p_t).pow(gamma) * bce_loss
+        return focal_loss.mean()
+
 
     def _shared_step(self, batch, stage='train'):
         ref_patches, references, tar_patches, targets, confidences, cert, estimates = batch
@@ -92,9 +102,12 @@ class Light(pl.LightningModule):
             estimates,
         )
 
-        conf_loss = 0 # 0.2 * self._compute_confidence_loss(conf_pred, confidences)
+        conf_loss = self._compute_confidence_loss(conf_pred, confidences)
+        
+        coords_loss = coords_loss / torch.max(coords_loss)
+        conf_loss = conf_loss / torch.max(conf_loss)
 
-        loss = coords_loss # + conf_loss
+        loss = 0.7 * coords_loss +  0.3 * conf_loss
 
         # Calculate other metrics
 

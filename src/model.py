@@ -67,6 +67,7 @@ class MatcherModel(nn.Module):
 
         self.to_patch_embedding = nn.Sequential(
             nn.Conv2d(in_channels, embedding_length, 3, 1, 1, bias=False),
+            nn.BatchNorm2d(embedding_length),
         )
         
         self.register_buffer(
@@ -77,8 +78,15 @@ class MatcherModel(nn.Module):
         self.backbone = nn.ModuleList([
             PreActBasicBlock(embedding_length * 2, 128, 1),
             PreActBasicBlock(128, 256, 1),
-            PreActBasicBlock(256, 512, 1),
-            PreActBasicBlock(512, out_channels, 2),
+            PreActBasicBlock(256, 256, 1),
+            PreActBasicBlock(256, 256, 1),
+
+            PreActBasicBlock(256, 512, 2),
+            PreActBasicBlock(512, 512, 2),
+            
+            nn.Conv2d(512, out_channels, kernel_size=1, stride=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(),
         ])
 
         self.global_pool = nn.AdaptiveAvgPool2d(1)

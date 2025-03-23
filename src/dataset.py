@@ -186,6 +186,10 @@ class MatchesDataset(torch.utils.data.Dataset):
                         certainty = round(certainty.item(), 2)
 
                         if certainty > 0.01:
+                            certainty = 1
+                            names.append((video, cam, image_name_a, image_name_b, kpid, saves, certainty))
+                        else:
+                            certainty = 0
                             names.append((video, cam, image_name_a, image_name_b, kpid, saves, certainty))
 
                         # if len(names) > 600:
