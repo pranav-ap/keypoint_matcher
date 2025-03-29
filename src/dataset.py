@@ -3,9 +3,7 @@ from utils import logger, min_max_normalize
 
 import os
 import gc
-from dataclasses import dataclass
 from typing import Dict, Optional
-
 import numpy as np
 import pandas as pd
 import cv2
@@ -15,9 +13,7 @@ import lightning as L
 import torch
 from PIL import Image
 from torchvision import transforms as T
-import scipy
-
-torch.set_float32_matmul_precision('medium')
+import math
 
 
 def print_hdf5_structure(f):
@@ -31,17 +27,98 @@ def print_hdf5_structure(f):
         print(f"Skipping corrupted object: {e}")
 
 
-def crop_image_alb(image: Image.Image, left, upper, right, lower, patch_size=32):
-    patch = image.crop((left, upper, right, lower))
-    assert patch.size[0] == patch.size[1]
-    assert patch.size[0] == patch_size
+def get_patch_boundary(image: Image.Image, center_point, patch_size):
+    image_width, image_height = image.size
+    x, y = center_point
+    half_patch_size = patch_size // 2
 
-    return patch
+    x, y = int(round(x)), int(round(y))
+
+    left = max(0, min(math.floor(x - half_patch_size), image_width - patch_size))
+    upper = max(0, min(math.floor(y - half_patch_size), image_height - patch_size))
+
+    right, lower = left + patch_size, upper + patch_size
+
+    # print(f'Left: {left}, Right: {right}, Upper: {upper}, Lower: {lower}')
+
+    assert right > left, f'Left: {left}, Right: {right}'
+    assert right - left == patch_size, f'Right - Left: {right - left}'
+    assert lower > upper, f'Upper: {upper}, Lower: {lower}'
+    assert lower - upper == patch_size, f'Lower - Upper: {lower - upper}'
+
+    return left, upper, right, lower
+
+
+def prepare_jitter_reference_patch(image, old_keypoint, patch_size=128):
+    x0, y0 = old_keypoint
+
+    # Define max perturbation to keep old keypoint inside
+    padding = config.image.patch_padding
+
+    max_perturb_x = max(0, min(
+        patch_size // 2 - 1 - padding,
+        x0 - padding,
+        image.width - x0 - 1 - padding
+    ))
+
+    max_perturb_y = max(0, min(
+        patch_size // 2 - 1 - padding,
+        y0 - padding,
+        image.height - y0 - 1 - padding
+    ))
+
+    perturb_x = np.random.randint(-max_perturb_x, max_perturb_x + 1)
+    perturb_y = np.random.randint(-max_perturb_y, max_perturb_y + 1)
+
+    new_x, new_y = x0 + perturb_x, y0 + perturb_y
+
+    # Crop centered at the new keypoint
+    left, upper, right, lower = get_patch_boundary(image, (new_x, new_y), patch_size)
+    patch = image.crop((left, upper, right, lower))
+
+    # Convert old keypoint to patch coordinates
+    old_keypoint = (x0 - left, y0 - upper)
+
+    return patch, old_keypoint
+
+
+def prepare_jitter_target_patch(image, keypoint1, keypoint2, patch_size=128):
+    x0, y0 = keypoint1
+    x1, y1 = keypoint2
+
+    # Define max perturbation ensuring both keypoints stay in bounds
+    padding = config.image.patch_padding
+
+    max_perturb_x = max(0, min(
+        patch_size // 2 - 1 - padding,
+        x0 - padding, image.width - x0 - 1 - padding,
+        x1 - padding, image.width - x1 - 1 - padding,
+    ))
+
+    max_perturb_y = max(0, min(
+        patch_size // 2 - 1 - padding,
+        y0 - padding, image.height - y0 - 1 - padding,
+        y1 - padding, image.height - y1 - 1 - padding,
+    ))
+
+    perturb_x = np.random.randint(-max_perturb_x, max_perturb_x + 1)
+    perturb_y = np.random.randint(-max_perturb_y, max_perturb_y + 1)
+
+    new_x, new_y = (x0 + x1) // 2 + perturb_x, (y0 + y1) // 2 + perturb_y  # Center between keypoints
+
+    # Crop centered at the new position
+    left, upper, right, lower = get_patch_boundary(image, (new_x, new_y), patch_size)
+    patch = image.crop((left, upper, right, lower))
+
+    # Convert keypoints to patch coordinates
+    keypoint1_patch = (x0 - left, y0 - upper)
+    keypoint2_patch = (x1 - left, y1 - upper)
+
+    return patch, keypoint1_patch, keypoint2_patch
 
 
 def match_collate_fn(batch):
-    ref_patches, references, tar_patches, targets, certainties, cert, estimates = zip(*batch)
-    # ref_patches, references, tar_patches, targets, certainties, cert = zip(*batch)
+    ref_patches, references, tar_patches, targets, estimates, certainties = zip(*batch)
 
     # Convert keypoints from list of tuples to tensor
     references = torch.tensor(references, dtype=torch.float32)
@@ -54,185 +131,36 @@ def match_collate_fn(batch):
         references,
         torch.cat(tar_patches, dim=0).unsqueeze(1),
         targets,
-        certainties,
-        torch.stack(cert).unsqueeze(1),
         estimates,
+        certainties,
     )
-
-
-def weighted_confidence(confidences, x, y, sigma=3):
-    """
-    Lower sigma = more local focus.
-    """
-    if confidences.is_cuda:
-        confidences = confidences.cpu().numpy()
-    else:
-        confidences = confidences.numpy()
-
-    H, W = confidences.shape
-    yy, xx = np.meshgrid(np.arange(H), np.arange(W), indexing="ij")
-
-    # Create a Gaussian weight mask centered at (x, y)
-    weights = np.exp(-((xx - x) ** 2 + (yy - y) ** 2) / (2 * sigma ** 2))
-    weights /= weights.sum()  # Normalize to sum to 1
-
-    # Compute weighted confidence
-    overall_confidence = np.sum(confidences * weights)
-
-    return overall_confidence
 
 
 class MatchesDataset(torch.utils.data.Dataset):
     # noinspection PyTypeChecker
     def __init__(self,
                  stage,
+                 df: pd.DataFrame,
                  perturb_target=False,
                  patch_normalize=None,
                  image_augmentation_no_kp=None,
                  image_augmentation_kp=None):
         self.stage = stage
-        self.perturb_target = perturb_target
+        self.df = df
+
+        self.perturb_target: bool = perturb_target
 
         self.image_augmentation_no_kp = image_augmentation_no_kp
         self.image_augmentation_kp = image_augmentation_kp
         self.patch_normalize = patch_normalize
 
-        self.names = []
-
-    def _setup_file(self):
-        self._file_all_missing = h5py.File(config.paths.matches.all_missing, mode='r')
-
-        self.names = self._get_names()
-
-    def _get_names(self):
-        names = []
-        ds_types = ['all_missing']
-
-        logger.info(f'Processing {self.stage}')
-
-        for ds_type in ds_types:
-            f = self._file_all_missing
-
-            # print_hdf5_structure(f)
-
-            logger.info(f'Processing {ds_type}')
-
-            for video in config.task.videos[self.stage][ds_type]:
-                config.task.video = video
-
-                for cam in config.task.cams:
-                    config.task.cam = cam
-
-                    logger.info(f'Track & Cam : {video} {cam}')
-
-                    warp_group = f[f'{video}/{cam}/matcher/warp']
-                    cert_group = f[f'{video}/{cam}/matcher/certainty']
-                    saves_group = f[f'{video}/{cam}/matcher/saves']
-
-                    for pair_name in warp_group.keys() & cert_group.keys() & saves_group.keys():
-                        warp_dataset = warp_group[pair_name]
-                        cert_dataset = cert_group[pair_name]
-                        saves_dataset = saves_group[pair_name]
-
-                        if not isinstance(warp_dataset, h5py.Dataset) or not isinstance(cert_dataset, h5py.Dataset) or not isinstance(saves_dataset, h5py.Dataset):
-                            continue
-
-                        image_name_a, image_name_b, kpid = pair_name.split('_')
-
-                        warp = warp_dataset[()]
-
-                        try:
-                            cert = cert_dataset[()]
-                            cert = torch.from_numpy(cert)
-                        except Exception as e:
-                            logger.debug('oops')
-                            continue
-
-                        saves = saves_dataset[()]
-
-                        assert warp.shape == (config.image.patch_size, config.image.patch_size, 4), f'{warp.shape=}'
-                        assert cert.shape == (config.image.patch_size, config.image.patch_size), f'{cert.shape=}'
-                        assert len(saves) == 12, f'{len(saves)=}' # 10 12
-
-                        reference = estimate = [0, 0]
-
-                        [
-                            reference[0], reference[1],
-                            ref_left, ref_upper, ref_right, ref_lower,
-
-                            estimate[0], estimate[1],
-                            tar_left, tar_upper, tar_right, tar_lower,
-                        ] = saves
-
-                        desired_patch_size = 82
-
-                        if not (0 <= reference[0] < desired_patch_size and 0 <= reference[1] < desired_patch_size):
-                            logger.debug(f'Bad ref crop kp {reference=}')
-                            continue
-
-                        if not (0 <= estimate[0] < desired_patch_size and 0 <= estimate[1] < desired_patch_size):
-                            logger.debug(f'Bad tar crop kp {estimate=}')
-                            continue
-
-                        x, y = reference
-                        y0, x0 = int(y), int(x)
-
-                        # certainty = cert[y0, x0]
-                        certainty = weighted_confidence(cert, x0, y0, sigma=2)
-
-                        # gaussian_cert = scipy.ndimage.gaussian_filter(cert, sigma=2)
-                        # certainty = gaussian_cert[y0, x0]
-
-                        certainty = round(certainty.item(), 2)
-
-                        if certainty > 0.01:
-                            certainty = 1
-                            names.append((video, cam, image_name_a, image_name_b, kpid, saves, certainty))
-                        else:
-                            certainty = 0
-                            names.append((video, cam, image_name_a, image_name_b, kpid, saves, certainty))
-
-                        # if len(names) > 600:
-                        #     break
-
-                logger.info(f'{len(names)=}')
-
-        excess = len(names) % config.train.train_batch_size
-        if excess:
-            names = names[:-excess]
-
-        return names
-
     def __len__(self):
-        if not hasattr(self, '_file_all_missing'):
-            self._setup_file()
-
-        assert hasattr(self, '_file_all_missing')
-
-        return len(self.names)
+        return len(self.df)
 
     @staticmethod
-    def crop_from_center(image, crop_width, crop_height):
-        img_width, img_height = image.size
-
-        center_x, center_y = img_width // 2, img_height // 2
-
-        left = center_x - crop_width // 2
-        top = center_y - crop_height // 2
-        right = center_x + crop_width // 2
-        bottom = center_y + crop_height // 2
-
-        cropped_image = image.crop((left, top, right, bottom))
-
-        return cropped_image
-
-    def _get_image(self, image_name):
-        image_path = os.path.join(config.paths.images, f'{image_name}.png')
-        mode = 'L' # 'RGB'
+    def _get_image(image_path):
+        mode = 'L'
         image = Image.open(image_path).convert(mode)
-
-        # w, h = config.image.crop_image_shape
-        # image = self.crop_from_center(image, w, h)
 
         return image
 
@@ -247,75 +175,19 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         right, lower = left + patch_size, upper + patch_size
 
-        assert right > left
-        assert right - left == patch_size
-        assert lower > upper
-        assert lower - upper == patch_size
+        print(f'Left: {left}, Right: {right}, Upper: {upper}, Lower: {lower}')
+
+        assert right > left, f'Left: {left}, Right: {right}'
+        assert int(right - left) == patch_size, f'Right - Left: {right - left}'
+        assert lower > upper, f'Upper: {upper}, Lower: {lower}'
+        assert int(lower - upper) == patch_size, f'Lower - Upper: {lower - upper}'
 
         return left, upper, right, lower
 
     @staticmethod
-    def _get_patch_boundary2(image: Image.Image, center_point, patch_size):
-        image_width, image_height = image.size
-        x, y = center_point
-        half_patch_size = patch_size // 2
-
-        left, right = x - half_patch_size, x + half_patch_size
-        upper, lower = y - half_patch_size, y + half_patch_size
-
-        if left < 0:
-            right += -left
-            left = 0
-        elif right > image_width:
-            left -= (right - image_width)
-            right = image_width
-
-        if upper < 0:
-            lower += -upper
-            upper = 0
-        elif lower > image_height:
-            upper -= (lower - image_height)
-            lower = image_height
-
-        assert right > left
-        assert right - left == patch_size
-        assert lower > upper
-        assert lower - upper == patch_size
-
-        return left, upper, right, lower
-
-    @staticmethod
-    def _center_crop(image: Image.Image, keypoint, left, upper, right, lower):
-        try:
-            transform = A.Compose(
-                transforms=[
-                    A.Crop(
-                        x_min=round(left), y_min=round(upper),
-                        x_max=round(right), y_max=round(lower),
-                    ),
-                ],
-                keypoint_params=A.KeypointParams(format='xy')
-            )
-        except Exception as e:
-            logger.debug(f'{keypoint, left, upper, right, lower=}')
-            print(e)
-
-        transformed = transform(image=np.array(image), keypoints=[keypoint])
-
-        patch = Image.fromarray(transformed['image'])
-        assert patch.size[0] == patch.size[1], f'patch must be a square : {patch.size=}'
-        assert patch.size[0] == right - left
-        assert patch.size[1] == lower - upper
-
-        keypoints = transformed['keypoints']
-        assert len(keypoints) == 1, "Expected a single transformed keypoint"
-        keypoint = keypoints[0][0], keypoints[0][1]
-
-        return patch, keypoint
-
-    def _warp_to_pixel_coords(self, warp):
+    def _warp_to_pixel_coords(warp):
         desired_patch_size = config.image.patch_size
-        w, h = desired_patch_size, desired_patch_size # config.image.crop_image_shape
+        w, h = desired_patch_size, desired_patch_size
 
         warp1 = warp[..., :2]
         warp1 = (
@@ -341,81 +213,68 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         return torch.cat((warp1, warp2), dim=-1)
 
-    def _prepare_patch(self, image_name, left, upper, right, lower):
-        image = self._get_image(image_name)
-        desired_patch_size = config.image.train_patch_size
+    def _prepare_image(self, idx):
+        row = self.df.iloc[idx, :].values
 
-        patch = crop_image_alb(
-           image, left, upper, right, lower, patch_size=desired_patch_size
+        [
+            DATASET,
+            cam,
+            kpid,
+            pair_name,
+            x0, y0,
+            x1, y1,
+            x_guess, y_guess,
+            certainty
+        ] = row
+
+        x0, y0, x1, y1, x_guess, y_guess = round(x0, 2), round(y0, 2), round(x1, 2), round(y1, 2), round(x_guess, 2), round(y_guess, 2)
+
+        ref_keypoint = (x0, y0)
+        tar_keypoint = (x1, y1)
+        guess_keypoint = (x_guess, y_guess)
+
+        config.task.video = DATASET
+        config.task.cam = f"cam{cam}"
+
+        left_name, right_name = pair_name.split("_")
+
+        image_a_path = f"D:/thesis_code/datasets/monado_slam/{DATASET}/mav0/cam{cam}/data/{left_name}.png"
+        image_b_path = f"D:/thesis_code/datasets/monado_slam/{DATASET}/mav0/cam{cam}/data/{right_name}.png"
+
+        ref_image = self._get_image(image_a_path)
+        tar_image = self._get_image(image_b_path)
+
+        ref_patch, reference = prepare_jitter_reference_patch(
+            ref_image, ref_keypoint,
+            patch_size=config.image.patch_size,
+        )
+
+        tar_patch, target, guess = prepare_jitter_target_patch(
+            tar_image, tar_keypoint, guess_keypoint,
+            patch_size=config.image.patch_size,
         )
 
         if self.stage == 'train' and self.image_augmentation_no_kp:
-            patch_np = np.array(patch)
-            transformed = self.image_augmentation_no_kp(
-                image=patch_np,
-            )
+            patch_np = np.array(ref_patch)
+            transformed = self.image_augmentation_no_kp(image=patch_np)
+            ref_patch = Image.fromarray(transformed['image'])
 
-            patch = Image.fromarray(transformed['image'])
+            patch_np = np.array(tar_patch)
+            transformed = self.image_augmentation_no_kp(image=patch_np)
+            tar_patch = Image.fromarray(transformed['image'])
 
         if self.patch_normalize:
-            patch = self.patch_normalize(patch)
-            patch = min_max_normalize(patch, min_val=0.0, max_val=1.0)
+            ref_patch = self.patch_normalize(ref_patch)
+            ref_patch = min_max_normalize(ref_patch, min_val=0.0, max_val=1.0)
 
-        return patch
+            tar_patch = self.patch_normalize(tar_patch)
+            tar_patch = min_max_normalize(tar_patch, min_val=0.0, max_val=1.0)
 
-    def _prepare_image(self, idx):
-        name = self.names[idx]
-        video, cam, image_name_a, image_name_b, kpid, saves, certainty = name
-
-        config.task.video = video
-        config.task.cam = cam
-
-        f = self._file_all_missing
-
-        warp_group = f[f'{video}/{cam}/matcher/warp']
-        cert_group = f[f'{video}/{cam}/matcher/certainty']
-
-        pair_name = f'{image_name_a}_{image_name_b}_{kpid}'
-        warp = warp_group[pair_name][()].astype(np.float32)
-        cert = cert_group[pair_name][()].astype(np.float32)
-
-        warp = torch.from_numpy(warp)
-        cert = torch.from_numpy(cert)
-        pixel_coords = self._warp_to_pixel_coords(warp)
-
-        reference = estimate = [0, 0]
-
-        [
-            reference[0], reference[1],
-            ref_left, ref_upper, ref_right, ref_lower,
-
-            estimate[0], estimate[1],
-            tar_left, tar_upper, tar_right, tar_lower,
-        ] = saves
-
-        ref_patch = self._prepare_patch(image_name_a, ref_left, ref_upper, ref_right, ref_lower)
-        tar_patch = self._prepare_patch(image_name_b, tar_left, tar_upper, tar_right, tar_lower)
-
-        x0, y0 = reference
-        y0, x0 = int(y0.item()), int(x0.item())
-
-        x0, y0, x1, y1 = pixel_coords[y0, x0]
-        x1, y1 = x1.item(), y1.item()
-
-        reference = (x0, y0)
-        target = (x1, y1)
-
-        return ref_patch, reference, tar_patch, target, certainty, cert, estimate
+        return ref_patch, reference, tar_patch, target, guess, certainty
 
     def __getitem__(self, idx):
-        if not hasattr(self, '_file_all_missing'):
-            self._setup_file()
-
-        assert hasattr(self, '_file_all_missing')
-
-        ref_patch, reference, tar_patch, target, certainty, cert, estimate = self._prepare_image(idx)
-
-        return ref_patch, reference, tar_patch, target, certainty, cert, estimate
+        items = self._prepare_image(idx)
+        return items
 
 
 class MatchesDataModule(L.LightningDataModule):
@@ -432,14 +291,6 @@ class MatchesDataModule(L.LightningDataModule):
             ]
         )
 
-        # self.patch_normalize = T.Compose([
-        #     T.ToTensor(),
-        #     T.Normalize(
-        #         mean=[0.485, 0.456, 0.406],
-        #         std=[0.229, 0.224, 0.225]
-        #     ),
-        # ])
-
         self.patch_normalize = T.Compose([
             T.ToTensor(),
             # T.Normalize(mean=[0.5], std=[0.5]),
@@ -449,16 +300,36 @@ class MatchesDataModule(L.LightningDataModule):
 
     def setup(self, stage=None):
         if stage == "fit":
+            df = pd.read_csv(
+                "training.csv",
+                header=0,
+                names=(
+                    "dataset",
+                    "cam",
+                    "kpid",
+                    "pair_name",
+                    "x0", "y0",
+                    "x1", "y1",
+                    "x_guess", "y_guess",
+                    "certainty",
+                )
+            )
+
+            excess = len(df) % config.train.batch_size
+            if excess:
+                df = df.iloc[:-excess]
+
             self.dataset['train'] = MatchesDataset(
                 stage="train",
+                df=df,
                 perturb_target=True,  # True False
-
                 patch_normalize=self.patch_normalize,
                 image_augmentation_no_kp=self.image_augmentation_no_kp,
             )
 
             self.dataset['val'] = MatchesDataset(
                 stage="val",
+                df=df,
                 perturb_target=True,
                 patch_normalize=self.patch_normalize,
             )
@@ -477,7 +348,7 @@ class MatchesDataModule(L.LightningDataModule):
     def train_dataloader(self):
         return torch.utils.data.DataLoader(
             self.dataset['train'],
-            batch_size=config.train.train_batch_size,
+            batch_size=config.train.batch_size,
             shuffle=True,
             num_workers=self.num_workers,
             persistent_workers=self.persistent_workers,
@@ -488,7 +359,7 @@ class MatchesDataModule(L.LightningDataModule):
     def val_dataloader(self):
         return torch.utils.data.DataLoader(
             self.dataset['val'],
-            batch_size=config.train.val_batch_size,
+            batch_size=config.train.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
             persistent_workers=self.persistent_workers,

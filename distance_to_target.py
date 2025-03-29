@@ -1,141 +1,149 @@
-from config import config
-from utils import logger
-import os
-import gc 
-import pandas as pd
-import glob
-import os
 import numpy as np
-import h5py
-import torch 
+import pandas as pd
+import matplotlib.pyplot as plt
+from scipy.stats import pearsonr, spearmanr
+from pprint import pprint
+import seaborn as sns
 
 
-def _warp_to_pixel_coords(warp):
-    desired_patch_size = config.image.patch_size
-    w, h = desired_patch_size, desired_patch_size 
-    
-    warp1 = warp[..., :2]
-    warp1 = (
-        torch.stack(
-            (
-                w * (warp1[..., 0] + 1) / 2,
-                h * (warp1[..., 1] + 1) / 2,
-            ),
-            axis=-1
-        )
-    )
+def calculate_target_error(training_df):
+    errors = np.sqrt((training_df["x_guess"] - training_df["x1"]) ** 2 +
+                     (training_df["y_guess"] - training_df["y1"]) ** 2)
+    return errors
 
-    warp2 = warp[..., 2:]
-    warp2 = (
-        torch.stack(
-            (
-                w * (warp2[..., 0] + 1) / 2,
-                h * (warp2[..., 1] + 1) / 2,
-            ),
-            axis=-1
-        )
-    )
 
-    return torch.cat((warp1, warp2), dim=-1)
+def calculate_reference_error(training_df):
+    errors = np.sqrt((training_df["x_guess"] - training_df["x0"]) ** 2 +
+                     (training_df["y_guess"] - training_df["y0"]) ** 2)
+    return errors
+
+
+def round_dict(stats):
+    return {key: round(value, 2) for key, value in stats.items()}
+
+
+def generate_error_statistics(target_errors, reference_errors, threshold, training_df):
+    stats = {
+        "mean_target_error": np.mean(target_errors),
+        "median_target_error": np.median(target_errors),
+        "std_dev_target_error": np.std(target_errors),
+        "min_target_error": np.min(target_errors),
+        "max_target_error": np.max(target_errors),
+
+        "count_above_threshold_target_error": np.sum(target_errors > threshold),
+        "count_above_threshold_x": np.sum(np.abs(training_df["x_guess"] - training_df["x1"]) > threshold),
+        "count_above_threshold_y": np.sum(np.abs(training_df["y_guess"] - training_df["y1"]) > threshold),
+
+        "mean_reference_error": np.mean(reference_errors),
+        "median_reference_error": np.median(reference_errors),
+        "std_dev_reference_error": np.std(reference_errors),
+        "min_reference_error": np.min(reference_errors),
+        "max_reference_error": np.max(reference_errors),
+    }
+    return round_dict(stats)
+
+
+def compute_estimate_accuracy_percentages(target_errors):
+    thresholds = [90, 60, 30, 25, 5, 2, 1.5, 1.25, 1]
+    percentages = {f"accuracy_within_{t}_pixels": np.mean(target_errors <= t) * 100 for t in thresholds}
+    return round_dict(percentages)
+
+
+def save_high_error_data(target_errors, threshold, training_df):
+    high_error_rows = training_df.loc[target_errors > threshold, :]
+    high_error_rows.to_csv("data/high_error_kpids.csv", index=False)
+    return high_error_rows
+
+
+def count_errors_per_dataset(high_error_rows):
+    return high_error_rows["dataset"].value_counts()
+
+
+def analyze_error_correlation(reference_errors, target_errors):
+    pearson_corr, pearson_p = pearsonr(reference_errors, target_errors)
+    spearman_corr, spearman_p = spearmanr(reference_errors, target_errors)
+    return {
+        "pearson_correlation": round(pearson_corr, 2),
+        "pearson_p_value": round(pearson_p, 5),
+        "spearman_correlation": round(spearman_corr, 2),
+        "spearman_p_value": round(spearman_p, 5),
+    }
+
+
+def plot_error_relationship(reference_errors, target_errors):
+    plt.figure(figsize=(8, 6))
+    plt.scatter(reference_errors, target_errors, alpha=0.5, s=10)
+    plt.xlabel("Reference Error (Distance to x0, y0)")
+    plt.ylabel("Target Error (Distance to x1, y1)")
+    plt.title("Reference Error vs. Target Error")
+    plt.grid(True)
+    plt.show()
+
+
+def plot_histograms(target_errors, reference_errors):
+    plt.figure(figsize=(12, 5))
+    plt.subplot(1, 2, 1)
+    plt.hist(target_errors, bins=50, alpha=0.7, color='b')
+    plt.title("Histogram of Target Errors")
+    plt.xlabel("Error")
+    plt.ylabel("Frequency")
+
+    plt.subplot(1, 2, 2)
+    plt.hist(reference_errors, bins=50, alpha=0.7, color='r')
+    plt.title("Histogram of Reference Errors")
+    plt.xlabel("Error")
+    plt.ylabel("Frequency")
+    plt.show()
+
+
+def plot_dataset_error_counts(dataset_counts):
+    dataset_counts.plot(kind='bar', figsize=(15, 5), color='purple')
+    plt.xlabel("Dataset")
+    plt.ylabel("High Error Count")
+    plt.title("High Error Counts per Dataset")
+    plt.xticks(rotation=0)
+    plt.grid(axis='y')
+    plt.show()
 
 
 def main():
-    f = h5py.File(config.paths.matches.all_missing, mode='r')
-    stage = 'train'
-    ds_type = 'all_missing'
-
-    errors = []
-
-    for video in config.task.videos[stage][ds_type]:
-        config.task.video = video
-        
-        track_errors = []
-
-        for cam in config.task.cams:
-            config.task.cam = cam
-
-            logger.info(f'Track & Cam : {video} {cam}')
-
-            warp_group = f[f'{video}/{cam}/matcher/warp']
-            saves_group = f[f'{video}/{cam}/matcher/saves']
-
-            for pair_name in warp_group.keys() & saves_group.keys():
-                warp_dataset = warp_group[pair_name]
-                saves_dataset = saves_group[pair_name]
-
-                if not isinstance(warp_dataset, h5py.Dataset) or not isinstance(saves_dataset, h5py.Dataset):
-                    continue
-
-                warp = warp_dataset[()].astype(np.float32)
-                saves = saves_dataset[()].astype(np.float32)
-                assert len(saves) == 12, f'{len(saves)=}'
-
-                warp = torch.from_numpy(warp)
-                pixel_coords = _warp_to_pixel_coords(warp)
-
-                reference = estimate = [0, 0]
-
-                [
-                    reference[0], reference[1],
-                    ref_left, ref_upper, ref_right, ref_lower,
-
-                    estimate[0], estimate[1],
-                    tar_left, tar_upper, tar_right, tar_lower,
-                ] = saves 
-
-                desired_patch_size = 82
-                
-                if not (0 <= reference[0] < desired_patch_size and 0 <= reference[1] < desired_patch_size):
-                    logger.debug(f'Bad ref crop kp {reference=}')
-                    continue
-                
-                if not (0 <= estimate[0] < desired_patch_size and 0 <= estimate[1] < desired_patch_size):
-                    logger.debug(f'Bad tar crop kp {estimate=}')
-                    continue
-
-                x, y = reference
-                y0, x0 = int(y), int(x)
-                
-                x0, y0, x1, y1 = pixel_coords[y0, x0]
-                x1, y1 = x1.item(), y1.item()
-
-                reference = (x0, y0)
-                target = (x1, y1)
-                
-                # Calculate the Euclidean distance error
-                error = np.sqrt((x1 - estimate[0]) ** 2 + (y1 - estimate[1]) ** 2)
-                
-                track_errors.append(error)
-                errors.append(error)
-        
-        mean_error = np.mean(track_errors) if track_errors else float('nan')
-        median_error = np.median(track_errors) if track_errors else float('nan')
-        std_error = np.std(track_errors) if track_errors else float('nan')
-        min_error = np.min(track_errors)
-        max_error = np.max(track_errors)
-            
-        logger.info(
-            f"{video}: Mean : {mean_error:.4f}, "
-            f"Std Dev: {std_error:.4f}, Min: {min_error:.4f}, Max: {max_error:.4f} "
-            f"Median: {median_error:.4f} "
-            f"(Samples: {len(track_errors)})"
+    training_df = pd.read_csv(
+        "data/training.csv",
+        header=0,
+        names=(
+            "dataset", "cam", "kpid", "pair_name", "x0", "y0", "x1", "y1", "x_guess", "y_guess", "certainty",
         )
-
-    f.close()
-
-    mean_error = np.mean(errors) if errors else float('nan')
-    median_error = np.median(errors) if errors else float('nan')
-    std_error = np.std(errors) if errors else float('nan')
-    min_error = np.min(errors)
-    max_error = np.max(errors)
-        
-    logger.info(
-        f"Overall Error: {mean_error:.4f}, "
-        f"Std Dev: {std_error:.4f}, Min: {min_error:.4f}, Max: {max_error:.4f} "
-        f"Median: {median_error:.4f} "
-        f"(Total Samples: {len(errors)})"
     )
-    
 
-if __name__ == '__main__':
+    threshold = 100
+
+    target_errors = calculate_target_error(training_df)
+    reference_errors = calculate_reference_error(training_df)
+
+    stats = generate_error_statistics(target_errors, reference_errors, threshold, training_df)
+    print("=> Error statistics:")
+    pprint(stats)
+
+    accuracy_percentages = compute_estimate_accuracy_percentages(target_errors)
+    print("=> Estimate Accuracy percentages:")
+    for key, value in accuracy_percentages.items():
+        print(f"{key.replace('_', ' ').capitalize()}: {value:.2f}%")
+
+    high_error_rows = save_high_error_data(target_errors, threshold, training_df)
+    dataset_counts = count_errors_per_dataset(high_error_rows)
+    print("=> Number of high-error rows per dataset:")
+    print(dataset_counts.to_string())
+
+    correlation_results = analyze_error_correlation(reference_errors, target_errors)
+    print('=> Correlation results:')
+    pprint(correlation_results)
+
+    plot_error_relationship(reference_errors, target_errors)
+    plot_histograms(target_errors, reference_errors)
+    plot_dataset_error_counts(dataset_counts)
+
+    print('Done!')
+
+
+if __name__ == "__main__":
     main()

@@ -82,7 +82,7 @@ def show_batch(
         rotations = rotations * (180 / torch.pi) 
 
     try:
-        font = ImageFont.truetype("arial.ttf", 12) #  20
+        font = ImageFont.truetype("arial.ttf", 20) # 12 20
     except IOError:
         font = ImageFont.load_default() 
 

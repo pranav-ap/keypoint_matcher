@@ -26,58 +26,31 @@ task:
     video: MOO09_short_1_updown
     videos:
         train:
-            normal: []
-            blur: []
-            all:  []
-            
-            all_missing: 
-                # training
-                # - MOO02_hand_puncher_2
-                # - MOO03_hand_shooter_easy
-                # - MOO04_hand_shooter_hard
-                - MOO05_inspect_easy
-                - MOO06_inspect_hard
-                - MOO07_mapping_easy
+            # - MOO01_hand_puncher_1
+            # - MOO02_hand_puncher_2
+            # - MOO03_hand_shooter_easy
+            # - MOO04_hand_shooter_hard
+            # - MOO05_inspect_easy
+            # - MOO06_inspect_hard
+            # - MOO07_mapping_easy
+            # - MOO08_mapping_hard
+            # - MOO09_short_1_updown
+             - MOO10_short_2_panorama
+             - MOO11_short_3_backandforth
 
-                # distance calc 
-                # - MOO01_hand_puncher_1
-                # - MOO02_hand_puncher_2
-                # - MOO03_hand_shooter_easy
-                # - MOO04_hand_shooter_hard
-                # - MOO05_inspect_easy
-                # - MOO06_inspect_hard
-                # - MOO07_mapping_easy
-                # - MOO08_mapping_hard
-                # - MOO09_short_1_updown
-                # - MOO10_short_2_panorama
-
-        val:
-            normal: []
-            blur:  []
-            all:  []
-            all_missing: #  []
-                # training
-                # - MOO01_hand_puncher_1
-                - MOO08_mapping_hard
-                - MOO09_short_1_updown
-                - MOO10_short_2_panorama
-
-        test:
-            normal: []
-            all: []
-            all_missing: [] 
+        val: []
+        test: []
 
     cam: cam0
     cams:
         - cam0
         - cam1
-        # - cam2
-        # - cam3
 
-    eda_mode: False  # True False
+    eda_mode: True  # True False
 
 paths:
     roots:
+        # D:/thesis_code
         ws: /home/stud/ath/ath_ws
         mav: ${paths.roots.ws}/datasets/${task.dataset}/${task.video}/mav0
         project: ${paths.roots.ws}/keypoint_matcher
@@ -90,13 +63,6 @@ paths:
         val_images: ${paths.roots.output}/images/val
         test_images: ${paths.roots.output}/images/test
 
-    matches: 
-        all: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_all/train/train_data.hdf5
-        normal: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_normal/train/train_data.hdf5
-        blur: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_blur/train/train_data.hdf5
-        all_missing: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_all_missing_works_est/train/train_data.hdf5
-        # all_missing: /home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_all_missing_more/train/train_data.hdf5
-
     images: ${paths.roots.mav}/${task.cam}/data
 
 
@@ -104,17 +70,12 @@ image:
     # [width, height]
     original_image_shape: [640, 480]  # [640, 480]
     crop_image_shape: [ 630, 476 ] # [504, 504] [630, 476]
-    patch_size: 82  # 32  82  
-    train_patch_size: 82  
-    patch_border: 6 # pixels 2 4 6
+    patch_size: 128  # 32  82
+    patch_padding: 15
     
 
 train:
-    train_batch_size: 20 # 20  12 
-    val_batch_size: 20
-    
-    num_patches_per_image: 70 # 120
-    
+    batch_size: 20 # 20  12
     accumulate_grad_batches: 4
     learning_rate: 1e-4   # 1e-4    
 

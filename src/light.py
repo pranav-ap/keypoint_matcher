@@ -55,7 +55,8 @@ class Light(pl.LightningModule):
 
         return percentage
     
-    def _compute_coords_loss(self, coords_delta_norm_pred, references, targets, estimates=None):
+    @staticmethod
+    def _compute_coords_loss(coords_delta_norm_pred, references, targets, estimates):
         targets_norm = Light._normalize_coords(targets.float())
         estimates_norm = Light._normalize_coords(estimates.float())
 
@@ -64,37 +65,23 @@ class Light(pl.LightningModule):
 
         return loss
 
-    @staticmethod
-    def _compute_confidence_loss(conf_pred, confidences):
-        loss = F.binary_cross_entropy(conf_pred.squeeze(1), confidences)
-        # loss = F.mse_loss(conf_pred.squeeze(1), confidences)
-        return loss
-
-    @staticmethod
-    def _compute_confidence_loss_2(conf_pred, confidences, gamma=2.0, alpha=0.25):
-        conf_pred = conf_pred.squeeze(1)
-        bce_loss = F.binary_cross_entropy(conf_pred, confidences, reduction='none')
-        p_t = conf_pred * confidences + (1 - conf_pred) * (1 - confidences)
-        focal_weight = alpha * confidences + (1 - alpha) * (1 - confidences)
-        focal_loss = focal_weight * (1 - p_t).pow(gamma) * bce_loss
-        return focal_loss.mean()
-
-
     def _shared_step(self, batch, stage='train'):
-        ref_patches, references, tar_patches, targets, confidences, cert, estimates = batch
-    
-        coords_delta_norm_pred, conf_pred = self.model(
+        ref_patches, references, tar_patches, targets, estimates, confidences = batch
+
+        coords_delta_norm_pred = self.model(
             ref_patches,
             tar_patches,
             references,
-            estimates
+            estimates,
         ) 
 
         # Calculate Loss
 
         coords_delta_pred = coords_delta_norm_pred.float() * ((config.image.train_patch_size - 1) / 2)
         coords_pred = estimates + coords_delta_pred  
-        
+
+        conf_pred = torch.ones(len(coords_pred), device=coords_pred.device) # fake
+
         coords_loss = self._compute_coords_loss(
             coords_delta_norm_pred, 
             references,
@@ -102,14 +89,10 @@ class Light(pl.LightningModule):
             estimates,
         )
 
-        conf_loss = self._compute_confidence_loss(conf_pred, confidences)
-        
         coords_loss = coords_loss / torch.max(coords_loss)
-        conf_loss = conf_loss / torch.max(conf_loss)
+        loss = coords_loss
 
-        loss = 0.7 * coords_loss +  0.3 * conf_loss
-
-        # Calculate other metrics
+        # Calculate metrics
 
         coords_percent_2_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=2)
         coords_percent_15_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.5)
@@ -122,11 +105,11 @@ class Light(pl.LightningModule):
 
         # clamp for visualization and further usage
         coords_pred = torch.clamp(coords_pred, min=0.0, max=81.0) 
-    
+
         metrics = {
             f"{stage}/loss": loss,
             f"{stage}/coords_loss": coords_loss,
-            f"{stage}/conf_loss": conf_loss,
+            f"{stage}/conf_loss": coords_loss, # fake
 
             f"{stage}/coords_mae": coords_mae,
 
@@ -139,16 +122,13 @@ class Light(pl.LightningModule):
         return metrics, coords_pred, conf_pred
 
     def training_step(self, batch, batch_idx):
-        ref_patches, references, tar_patches, targets, confidences, cert, estimates = batch
-        # ref_patches, references, tar_patches, targets, confidences, cert = batch
-
         metrics, coords_pred, conf_pred = self._shared_step(batch, stage='train')
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(batch, coords_pred, confidence_pred=conf_pred, estimates=estimates, limit_count=limit_count, stage='train')
+            self._log_images(batch, coords_pred, confidence_pred=conf_pred, limit_count=limit_count, stage='train')
 
         loss = metrics['train/loss']
 
@@ -156,37 +136,31 @@ class Light(pl.LightningModule):
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):
-        ref_patches, references, tar_patches, targets, confidences, cert, estimates = batch
-        # ref_patches, references, tar_patches, targets, confidences, cert = batch
-
         metrics, coords_pred, conf_pred = self._shared_step(batch, stage='val')
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(batch, coords_pred, confidence_pred=conf_pred, estimates=estimates, limit_count=limit_count, stage='val')
+            self._log_images(batch, coords_pred, confidence_pred=conf_pred, limit_count=limit_count, stage='val')
         
         return metrics
 
     @torch.no_grad()
     def test_step(self, batch, batch_idx):
-        ref_patches, references, tar_patches, targets, confidences, cert, estimates = batch
-        # ref_patches, references, tar_patches, targets, confidences, cert = batch
-
+        # ref_patches, references, tar_patches, targets, estimates, confidences = batch
         metrics, coords_pred, conf_pred = self._shared_step(batch, stage='test')
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(batch, coords_pred, confidence_pred=conf_pred, estimates=estimates, limit_count=limit_count, stage='val')
+            self._log_images(batch, coords_pred, confidence_pred=conf_pred, limit_count=limit_count, stage='val')
         
         return metrics
 
-    def _log_images(self, batch, target_coords, rotation_pred=None, confidence_pred=None, estimates=None, limit_count=None, stage=None):
-        ref_patches, references, tar_patches, targets, confidences, cert, estimates = batch
-        # ref_patches, references, tar_patches, targets, confidences, cert = batch
+    def _log_images(self, batch, target_coords, confidence_pred=None, limit_count=None, stage=None):
+        ref_patches, references, tar_patches, targets, estimates, confidences = batch
         
         image_grid = show_batch(
             ref_patches, tar_patches,
@@ -214,7 +188,8 @@ class Light(pl.LightningModule):
 
     def configure_optimizers(self):        
         # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate, momentum=0.6)
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate) # weight_decay=0.1
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        # weight_decay=0.1
 
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min')
         # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
@@ -261,10 +236,9 @@ class Light(pl.LightningModule):
     @staticmethod
     def _normalize_coords(coords):
         """Normalizes coordinates from [0, 81] to [-1, 1] in a numerically stable way."""
-        return (coords - (config.image.train_patch_size - 1) / 2) / ((config.image.train_patch_size - 1) / 2)
+        return (coords - (config.image.patch_size - 1) / 2) / ((config.image.patch_size - 1) / 2)
 
     @staticmethod
     def _denormalize_coords(coords):
         """Denormalizes coordinates from [-1, 1] back to [0, 81]."""
-        return coords * ((config.image.train_patch_size - 1) / 2) + (config.image.train_patch_size - 1) / 2
-
+        return coords * ((config.image.patch_size - 1) / 2) + (config.image.patch_size - 1) / 2

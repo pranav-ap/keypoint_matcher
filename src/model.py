@@ -60,8 +60,7 @@ class MatcherModel(nn.Module):
         super().__init__()
 
         patch_size = config.image.patch_size
-
-        in_channels = 1 
+        in_channels = 1
         embedding_length = 32
         out_channels = 512 
 
@@ -69,29 +68,22 @@ class MatcherModel(nn.Module):
             nn.Conv2d(in_channels, embedding_length, 3, 1, 1, bias=False),
             nn.BatchNorm2d(embedding_length),
         )
-        
-        self.register_buffer(
-            'positional_embedding', 
-            positionalencoding2d(embedding_length, patch_size, patch_size).unsqueeze(0)
-        )
+
+        from src import RoPENd
+        self.pe = RoPENd((patch_size, patch_size, embedding_length))
 
         self.backbone = nn.ModuleList([
             PreActBasicBlock(embedding_length * 2, 128, 1),
             PreActBasicBlock(128, 256, 1),
             PreActBasicBlock(256, 256, 1),
-            PreActBasicBlock(256, 256, 1),
 
             PreActBasicBlock(256, 512, 2),
-            PreActBasicBlock(512, 512, 2),
-            
-            nn.Conv2d(512, out_channels, kernel_size=1, stride=1),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(),
+            PreActBasicBlock(512, out_channels, 2),
         ])
 
         self.global_pool = nn.AdaptiveAvgPool2d(1)
        
-        self.head = nn.Linear(out_channels + 4, 3)
+        self.head = nn.Linear(out_channels + 4, 2)
 
         self._initialize_weights()
 
@@ -109,8 +101,11 @@ class MatcherModel(nn.Module):
         Patch Embedding
         """
         
-        ref_patches = self.to_patch_embedding(ref_patches) * self.positional_embedding
-        tar_patches = self.to_patch_embedding(tar_patches) * self.positional_embedding
+        ref_patches = self.to_patch_embedding(ref_patches)
+        ref_patches = self.pe(ref_patches)
+        tar_patches = self.to_patch_embedding(tar_patches)
+        tar_patches = self.pe(tar_patches)
+
         logger.debug(f'1 {ref_patches.shape=}')
 
         """
@@ -147,9 +142,8 @@ class MatcherModel(nn.Module):
         """
 
         coords = torch.tanh(x[:, :2])
-        confidences = torch.sigmoid(x[:, 2].unsqueeze(-1))
 
-        return coords, confidences
+        return coords
 
     def _initialize_weights(self):
         for m in self.modules():
