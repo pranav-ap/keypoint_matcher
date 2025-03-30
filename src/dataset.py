@@ -233,9 +233,6 @@ class MatchesDataset(torch.utils.data.Dataset):
         tar_keypoint = (x1, y1)
         guess_keypoint = (x_guess, y_guess)
 
-        config.task.video = DATASET
-        config.task.cam = f"cam{cam}"
-
         left_name, right_name = pair_name.split("_")
 
         image_a_path = f"D:/thesis_code/datasets/monado_slam/{DATASET}/mav0/cam{cam}/data/{left_name}.png"
@@ -265,10 +262,10 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         if self.patch_normalize:
             ref_patch = self.patch_normalize(ref_patch)
-            ref_patch = min_max_normalize(ref_patch, min_val=0.0, max_val=1.0)
+            # ref_patch = min_max_normalize(ref_patch, min_val=0.0, max_val=1.0)
 
             tar_patch = self.patch_normalize(tar_patch)
-            tar_patch = min_max_normalize(tar_patch, min_val=0.0, max_val=1.0)
+            # tar_patch = min_max_normalize(tar_patch, min_val=0.0, max_val=1.0)
 
         return ref_patch, reference, tar_patch, target, guess, certainty
 
@@ -281,8 +278,8 @@ class MatchesDataModule(L.LightningDataModule):
     def __init__(self):
         super().__init__()
 
-        self.num_workers = 0 if config.task.eda_mode else os.cpu_count()
-        self.persistent_workers = not config.task.eda_mode
+        self.num_workers = 0 if config.experiment.eda_mode else os.cpu_count()
+        self.persistent_workers = not config.experiment.eda_mode
 
         self.image_augmentation_no_kp = A.Compose(
             transforms=[
@@ -293,28 +290,14 @@ class MatchesDataModule(L.LightningDataModule):
 
         self.patch_normalize = T.Compose([
             T.ToTensor(),
-            # T.Normalize(mean=[0.5], std=[0.5]),
+            T.Normalize(mean=[0.5], std=[0.5]),
         ])
 
         self.dataset: Dict[str, MatchesDataset] = {}
 
     def setup(self, stage=None):
         if stage == "fit":
-            df = pd.read_csv(
-                "training.csv",
-                header=0,
-                names=(
-                    "dataset",
-                    "cam",
-                    "kpid",
-                    "pair_name",
-                    "x0", "y0",
-                    "x1", "y1",
-                    "x_guess", "y_guess",
-                    "certainty",
-                )
-            )
-
+            df = pd.read_csv("D:/thesis_code/keypoint_matcher/data/train.csv")
             excess = len(df) % config.train.batch_size
             if excess:
                 df = df.iloc[:-excess]
@@ -327,6 +310,11 @@ class MatchesDataModule(L.LightningDataModule):
                 image_augmentation_no_kp=self.image_augmentation_no_kp,
             )
 
+            df = pd.read_csv("D:/thesis_code/keypoint_matcher/data/val.csv")
+            excess = len(df) % config.train.batch_size
+            if excess:
+                df = df.iloc[:-excess]
+
             self.dataset['val'] = MatchesDataset(
                 stage="val",
                 df=df,
@@ -338,8 +326,14 @@ class MatchesDataModule(L.LightningDataModule):
             logger.info(f"Validation Dataset  : {len(self.dataset['val'])} samples")
 
         if stage == "test":
+            df = pd.read_csv("D:/thesis_code/keypoint_matcher/data/test.csv")
+            excess = len(df) % config.train.batch_size
+            if excess:
+                df = df.iloc[:-excess]
+
             self.dataset['test'] = MatchesDataset(
                 stage="test",
+                df=df,
                 patch_normalize=self.patch_normalize,
             )
 

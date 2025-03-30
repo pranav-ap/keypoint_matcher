@@ -8,13 +8,13 @@ def filter_high_error_kpids(training_df, high_error_kpids_df):
     return clean_df
 
 
-def create_datasets(clean_df, splits):
+def create_datasets(df, splits):
     """Create clean training, validation, and test datasets based on the splits dictionary."""
-    clean_train_df = clean_df[clean_df["dataset"].isin(splits['train'])]
-    clean_val_df = clean_df[clean_df["dataset"].isin(splits['val'])]
-    clean_test_df = clean_df[clean_df["dataset"].isin(splits['test'])]
+    train_df = df[df["dataset"].isin(splits['train'])]
+    val_df = df[df["dataset"].isin(splits['val'])]
+    test_df = df[df["dataset"].isin(splits['test'])]
 
-    return clean_train_df, clean_val_df, clean_test_df
+    return train_df, val_df, test_df
 
 
 def print_dataset_stats(clean_train_df, clean_val_df, clean_test_df):

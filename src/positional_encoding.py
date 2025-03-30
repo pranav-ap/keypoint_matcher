@@ -1,4 +1,5 @@
 import torch
+import math
 
 
 class RoPENd(torch.nn.Module):
@@ -29,4 +30,22 @@ class RoPENd(torch.nn.Module):
         x = torch.view_as_complex(x.reshape(*x.shape[:-1], -1, 2))
         pe_x = self.rotations * x
         return torch.view_as_real(pe_x).flatten(-2)
-    
+
+
+def positionalencoding2d(d_model, height, width):
+    assert d_model % 4 == 0, f"Cannot use sin/cos positional encoding with odd dimension (got dim={d_model})"
+
+    pe = torch.zeros(d_model, height, width, requires_grad=False)
+    d_model = d_model // 2
+    div_term = torch.exp(torch.arange(0., d_model, 2) * -(math.log(10000.0) / d_model))
+
+    pos_w = torch.arange(width).unsqueeze(1)
+    pos_h = torch.arange(height).unsqueeze(1)
+
+    pe[0:d_model:2, :, :] = torch.sin(pos_w * div_term).transpose(0, 1).unsqueeze(1).repeat(1, height, 1)
+    pe[1:d_model:2, :, :] = torch.cos(pos_w * div_term).transpose(0, 1).unsqueeze(1).repeat(1, height, 1)
+    pe[d_model::2, :, :] = torch.sin(pos_h * div_term).transpose(0, 1).unsqueeze(2).repeat(1, 1, width)
+    pe[d_model + 1::2, :, :] = torch.cos(pos_h * div_term).transpose(0, 1).unsqueeze(2).repeat(1, 1, width)
+
+    return pe
+

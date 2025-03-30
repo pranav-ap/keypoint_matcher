@@ -1,4 +1,4 @@
-log_level: WARNING  # TRACE WARNING
+log_level: TRACE  # TRACE WARNING
 
 experiment:
 
@@ -20,37 +20,11 @@ experiment:
     stddev: 4
     name: ${experiment.model}_${experiment.linux}_linux
 
-task:
-    dataset: monado_slam
-
-    video: MOO09_short_1_updown
-    videos:
-        train:
-            # - MOO01_hand_puncher_1
-            # - MOO02_hand_puncher_2
-            # - MOO03_hand_shooter_easy
-            # - MOO04_hand_shooter_hard
-            # - MOO05_inspect_easy
-            # - MOO06_inspect_hard
-            # - MOO07_mapping_easy
-            # - MOO08_mapping_hard
-            # - MOO09_short_1_updown
-             - MOO10_short_2_panorama
-             - MOO11_short_3_backandforth
-
-        val: []
-        test: []
-
-    cam: cam0
-    cams:
-        - cam0
-        - cam1
-
     eda_mode: True  # True False
 
 paths:
     roots:
-        # D:/thesis_code
+#        ws: D:/thesis_code
         ws: /home/stud/ath/ath_ws
         mav: ${paths.roots.ws}/datasets/${task.dataset}/${task.video}/mav0
         project: ${paths.roots.ws}/keypoint_matcher
@@ -70,20 +44,20 @@ image:
     # [width, height]
     original_image_shape: [640, 480]  # [640, 480]
     crop_image_shape: [ 630, 476 ] # [504, 504] [630, 476]
-    patch_size: 128  # 32  82
+    patch_size: 32  # 32  82  128
     patch_padding: 15
     
 
 train:
-    batch_size: 20 # 20  12
+    batch_size: 12 # 20  12
     accumulate_grad_batches: 4
     learning_rate: 1e-4   # 1e-4    
 
-    fast_dev_run: False  # True False
+    fast_dev_run: True  # True False
     overfit_batches: 0
 
-    patience: 15
-    max_epochs: 200
+    patience: 10
+    max_epochs: 10
     check_val_every_n_epoch: 2
     num_sanity_val_steps: 1
     log_every_n_steps: 10 # 100

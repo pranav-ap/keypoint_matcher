@@ -105,8 +105,8 @@ def show_batch(
         confs = confidence_pred
 
     def prepare_patch(patch, x, y, color):
-        # patch = denormalize(patch)
-        patch = min_max_normalize(patch, min_val=0.0, max_val=1.0) 
+        patch = denormalize(patch)
+        # patch = min_max_normalize(patch, min_val=0.0, max_val=1.0)
         patch = to_pil(patch)
 
         if patch.mode != "RGB":
@@ -123,8 +123,8 @@ def show_batch(
         return patch
 
     def prepare_target_patch(patch, x, y, a, b, p, q, rot=None):
-        # patch = denormalize(patch)
-        patch = min_max_normalize(patch, min_val=0.0, max_val=1.0)  
+        patch = denormalize(patch)
+        # patch = min_max_normalize(patch, min_val=0.0, max_val=1.0)
         patch = to_pil(patch)
 
         if patch.mode != "RGB":

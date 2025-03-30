@@ -1,18 +1,171 @@
-import lightning.pytorch as pl
 import torch
 import torch.nn as nn
+import torch.nn.init as init
 import torch.nn.functional as F
 import torchmetrics
-from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint, TQDMProgressBar, ModelSummary
+import lightning.pytorch as pl
+from lightning.pytorch.callbacks import (
+    EarlyStopping,
+    LearningRateMonitor,
+    ModelCheckpoint,
+    ModelSummary,
+    TQDMProgressBar
+)
 from neptune.types import File
-from torch.distributions.multivariate_normal import MultivariateNormal
-
 from config import config
-from utils import show_batch, get_tensor_grid, logger
-from .model import MatcherModel
+from utils import show_batch, logger
+from .positional_encoding import RoPENd
 
 
-class Light(pl.LightningModule):
+class PreActBasicBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1):
+        super().__init__()
+
+        self.bn1 = nn.BatchNorm2d(in_channels)
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
+
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+
+        self.shortcut = None
+
+        if in_channels != out_channels or stride != 1:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+            )
+
+    def forward(self, x):
+        out = F.relu(self.bn1(x))
+        shortcut = self.shortcut(out) if self.shortcut else x
+        out = self.conv1(out)
+        out = self.conv2(F.relu(self.bn2(out)))
+        out += shortcut
+
+        return out
+
+
+class MatcherModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        patch_size = config.image.patch_size
+        in_channels = 1
+        embedding_length = 32
+        out_channels = 512
+
+        logger.debug(f'{patch_size=}')
+        logger.debug(f'{in_channels=}')
+        logger.debug(f'{embedding_length=}')
+        logger.debug(f'{out_channels=}')
+
+        self.patch_embedding = nn.Sequential(
+            nn.Conv2d(in_channels, embedding_length, 3, 1, 1, bias=False),
+            nn.BatchNorm2d(embedding_length),
+        )
+
+        self.positional_encoding = RoPENd((patch_size, patch_size, embedding_length))
+
+        self.backbone = nn.ModuleList([
+            PreActBasicBlock(embedding_length * 2, 128, 1),
+            PreActBasicBlock(128, 256, 1),
+            PreActBasicBlock(256, out_channels, 2),
+        ])
+
+        self.global_pool = nn.AdaptiveAvgPool2d(1)
+
+        self.head = nn.Linear(out_channels + 4, 2)
+
+        self._initialize_weights()
+
+    def forward(self, ref_patches, tar_patches, references, estimates):
+        _, _, height, width = ref_patches.shape
+
+        # normalize to 0 to 1
+        references = references / (height - 1)
+        estimates = estimates / (height - 1)
+        # normalize to -1 to 1
+        references = references * 2 - 1
+        estimates = estimates * 2 - 1
+
+        """
+        Patch Embedding
+        """
+
+        ref_patches = self.patch_embedding(ref_patches)
+        # (b, c, h, w) -> (b, h, w, c)
+        ref_patches = ref_patches.permute(0, 2, 3, 1).contiguous()
+        ref_patches = self.positional_encoding(ref_patches)
+        # (b, h, w, c) -> (b, c, h, w)
+        ref_patches = ref_patches.permute(0, 3, 1, 2).contiguous()
+
+        logger.debug(f'1 {ref_patches.shape=}')
+
+        tar_patches = self.patch_embedding(tar_patches)
+        # (b, c, h, w) -> (b, h, w, c)
+        tar_patches = tar_patches.permute(0, 2, 3, 1).contiguous()
+        tar_patches = self.positional_encoding(tar_patches)
+        # (b, h, w, c) -> (b, c, h, w)
+        tar_patches = tar_patches.permute(0, 3, 1, 2).contiguous()
+
+        """
+        PreActBasicBlock ResNet 
+        """
+
+        x = torch.cat([ref_patches, tar_patches], dim=1)
+        logger.debug(f'2 {x.shape=}')
+
+        for layer in self.backbone:
+            x = layer(x)
+
+        logger.debug(f'3 {x.shape=}')
+
+        x = self.global_pool(x)
+
+        logger.debug(f'4 {x.shape=}')
+        x = torch.flatten(x, start_dim=1)
+        logger.debug(f'5 {x.shape=}')
+
+        """
+        Linear Layer
+        """
+
+        x = torch.cat([x, references, estimates], dim=1)
+        logger.debug(f'6 {x.shape=}')
+        x = self.head(x)
+        logger.debug(f'7 {x.shape=}')
+
+        """
+        Final Activations
+        """
+
+        x = torch.tanh(x[:, :2])
+        logger.debug(f'8 {x.shape=}')
+
+        return x
+
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                # Kaiming He initialization for Conv2d layers (for ReLU activation)
+                init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    init.zeros_(m.bias)
+            elif isinstance(m, nn.Linear):
+                # Xavier (Glorot) initialization for Linear layers
+                init.xavier_normal_(m.weight)
+                if m.bias is not None:
+                    init.zeros_(m.bias)
+            elif isinstance(m, nn.BatchNorm2d):
+                # Initialize BatchNorm layers
+                init.ones_(m.weight)
+                init.zeros_(m.bias)
+            elif isinstance(m, nn.BatchNorm1d):
+                # Initialize BatchNorm layers
+                init.ones_(m.weight)
+                init.zeros_(m.bias)
+
+
+class Light_A(pl.LightningModule):
     def __init__(self, neptune_logger=None, tensorboard_logger=None):
         super().__init__()
 
@@ -45,7 +198,7 @@ class Light(pl.LightningModule):
         return pred
 
     @staticmethod
-    def _compute_coords_accuracy_percentage(coords_pred, target, pixels=1):
+    def _compute_coords_accuracy_percentage(coords_pred, target, pixels=1.0):
         difference = torch.abs(coords_pred - target)
 
         # Check which differences exceed N pixels
@@ -57,8 +210,8 @@ class Light(pl.LightningModule):
     
     @staticmethod
     def _compute_coords_loss(coords_delta_norm_pred, references, targets, estimates):
-        targets_norm = Light._normalize_coords(targets.float())
-        estimates_norm = Light._normalize_coords(estimates.float())
+        targets_norm = Light_A._normalize_coords(targets.float())
+        estimates_norm = Light_A._normalize_coords(estimates.float())
 
         coords_delta_norm_true = targets_norm - estimates_norm
         loss = F.l1_loss(coords_delta_norm_pred, coords_delta_norm_true)
@@ -77,10 +230,10 @@ class Light(pl.LightningModule):
 
         # Calculate Loss
 
-        coords_delta_pred = coords_delta_norm_pred.float() * ((config.image.train_patch_size - 1) / 2)
+        coords_delta_pred = coords_delta_norm_pred.float() * ((config.image.patch_size - 1) / 2)
         coords_pred = estimates + coords_delta_pred  
 
-        conf_pred = torch.ones(len(coords_pred), device=coords_pred.device) # fake
+        conf_pred = torch.ones(len(coords_pred), device=coords_pred.device)  # fake
 
         coords_loss = self._compute_coords_loss(
             coords_delta_norm_pred, 
@@ -89,27 +242,26 @@ class Light(pl.LightningModule):
             estimates,
         )
 
-        coords_loss = coords_loss / torch.max(coords_loss)
         loss = coords_loss
 
         # Calculate metrics
 
-        coords_percent_2_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=2)
+        coords_percent_2_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=2.0)
         coords_percent_15_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.5)
         coords_percent_125_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.25)
-        coords_percent_1_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1)
+        coords_percent_1_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.0)
 
         coords_mae = self.mae(coords_pred, targets.squeeze(1))
 
         # Collect
 
         # clamp for visualization and further usage
-        coords_pred = torch.clamp(coords_pred, min=0.0, max=81.0) 
+        coords_pred = torch.clamp(coords_pred, min=0.0, max=float(config.image.patch_size))
 
         metrics = {
             f"{stage}/loss": loss,
             f"{stage}/coords_loss": coords_loss,
-            f"{stage}/conf_loss": coords_loss, # fake
+            f"{stage}/conf_loss": coords_loss,  # fake
 
             f"{stage}/coords_mae": coords_mae,
 

@@ -28,5 +28,6 @@ dependencies:
         - opencv-python
         - tensorboard
         - grad-cam
-        - graphviz 
+        - graphviz
+        - einops
         
