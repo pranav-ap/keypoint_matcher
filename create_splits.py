@@ -31,7 +31,7 @@ def print_dataset_stats(clean_train_df, clean_val_df, clean_test_df):
     print(f"Total cleaned dataset size: {total_size} (100%)")
 
 
-def main():
+def main(threshold = 30):
     splits = {
         'train': [
             "MOO01_hand_puncher_1",
@@ -52,8 +52,8 @@ def main():
         ]
     }
 
-    training_df = pd.read_csv("data/training.csv")
-    high_error_kpids_df = pd.read_csv("data/high_error_kpids.csv")
+    training_df = pd.read_csv("/home/stud/ath/ath_ws/datasets/match_april/training.csv")
+    high_error_kpids_df = pd.read_csv("/home/stud/ath/ath_ws/datasets/match_april/high_error_kpids.csv")
 
     # Step 1: Filter out high error keypoints from the training data
     clean_df = filter_high_error_kpids(training_df, high_error_kpids_df)
@@ -62,9 +62,9 @@ def main():
     clean_train_df, clean_val_df, clean_test_df = create_datasets(clean_df, splits)
 
     # Step 3: Save the cleaned datasets to CSV
-    clean_train_df.to_csv("data/train.csv", index=False)
-    clean_val_df.to_csv("data/val.csv", index=False)
-    clean_test_df.to_csv("data/test.csv", index=False)
+    clean_train_df.to_csv(f"/home/stud/ath/ath_ws/datasets/match_april/{threshold}/train.csv", index=False)
+    clean_val_df.to_csv(f"/home/stud/ath/ath_ws/datasets/match_april/{threshold}/val.csv", index=False)
+    clean_test_df.to_csv(f"/home/stud/ath/ath_ws/datasets/match_april/{threshold}/test.csv", index=False)
 
     # Step 4: Print the dataset stats
     print_dataset_stats(clean_train_df, clean_val_df, clean_test_df)

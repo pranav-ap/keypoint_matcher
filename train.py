@@ -3,7 +3,7 @@ from config import config
 import lightning.pytorch as pl
 import torch
 
-from src import Light, MatchesDataModule
+from src import Light_A as Light, MatchesDataModule
 from utils import logger, make_clear_directory, MyLogger
 
 torch.set_float32_matmul_precision('medium')

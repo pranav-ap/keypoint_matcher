@@ -28,7 +28,7 @@ class PreActBasicBlock(nn.Module):
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
 
         self.shortcut = None
-
+        
         if in_channels != out_channels or stride != 1:
             self.shortcut = nn.Sequential(
                 nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
@@ -53,10 +53,10 @@ class MatcherModel(nn.Module):
         embedding_length = 32
         out_channels = 512
 
-        logger.debug(f'{patch_size=}')
-        logger.debug(f'{in_channels=}')
-        logger.debug(f'{embedding_length=}')
-        logger.debug(f'{out_channels=}')
+        logger.info(f'{patch_size=}')
+        logger.info(f'{in_channels=}')
+        logger.info(f'{embedding_length=}')
+        logger.info(f'{out_channels=}')
 
         self.patch_embedding = nn.Sequential(
             nn.Conv2d(in_channels, embedding_length, 3, 1, 1, bias=False),
@@ -314,6 +314,20 @@ class Light_A(pl.LightningModule):
     def _log_images(self, batch, target_coords, confidence_pred=None, limit_count=None, stage=None):
         ref_patches, references, tar_patches, targets, estimates, confidences = batch
         
+        mae_per_patch = torch.abs(target_coords - targets.squeeze(1)).mean(dim=1)
+        
+        if limit_count is not None:
+            worst_indices = torch.argsort(mae_per_patch, descending=True)[:limit_count]
+            
+            ref_patches = ref_patches[worst_indices]
+            tar_patches = tar_patches[worst_indices]
+            references = references[worst_indices]
+            targets = targets[worst_indices]
+            estimates = estimates[worst_indices]
+            target_coords = target_coords[worst_indices]
+            confidence_pred = confidence_pred[worst_indices] if confidence_pred is not None else None
+            confidences = confidences[worst_indices]
+        
         image_grid = show_batch(
             ref_patches, tar_patches,
             references, 
@@ -372,7 +386,7 @@ class Light_A(pl.LightningModule):
             save_last=True,
         )
 
-        progress_bar_callback = TQDMProgressBar(refresh_rate=5) 
+        progress_bar_callback = TQDMProgressBar(refresh_rate=50, leave=False) 
         lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
 
         summary_callback = ModelSummary(max_depth=1)

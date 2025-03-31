@@ -1,26 +1,39 @@
-log_level: TRACE  # TRACE WARNING
+log_level: WARNING  # TRACE WARNING
 
 experiment:
 
     # model: shogun
     # linux: 53 
-
-    # model: jason
-    # linux: 75
     
-    model: micky 
-    linux: 57 
+    # model: micky 
+    # linux: 57 
 
     # model: mando
     # linux: 60 
     
-    params: 14mil
+    model: jason
+    linux: 75
+
+    params: 5mil
     heads: 1
     datasets: mix
     stddev: 4
     name: ${experiment.model}_${experiment.linux}_linux
 
-    eda_mode: True  # True False
+    eda_mode: False  # True False
+
+
+image:
+    # [width, height]
+    original_image_shape: [640, 480]  # [640, 480]
+    crop_image_shape: [ 630, 476 ] # [504, 504] [630, 476]
+    patch_size: 128  # 32  82  128
+    patch_size_folder: 100  #  30 75 100
+    patch_padding: 2  # 15
+    jitter_reference: True
+    jitter_target: True
+    patch_min_confidence: 0.2
+
 
 paths:
     roots:
@@ -39,25 +52,22 @@ paths:
 
     images: ${paths.roots.mav}/${task.cam}/data
 
+    csv:
+        train: ${paths.roots.ws}/datasets/match_april/${image.patch_size_folder}/train.csv
+        val: ${paths.roots.ws}/datasets/match_april/${image.patch_size_folder}/val.csv
+        test: ${paths.roots.ws}/datasets/match_april/${image.patch_size_folder}/test.csv
 
-image:
-    # [width, height]
-    original_image_shape: [640, 480]  # [640, 480]
-    crop_image_shape: [ 630, 476 ] # [504, 504] [630, 476]
-    patch_size: 32  # 32  82  128
-    patch_padding: 15
-    
 
 train:
-    batch_size: 12 # 20  12
+    batch_size: 40 # 20  12
     accumulate_grad_batches: 4
     learning_rate: 1e-4   # 1e-4    
 
-    fast_dev_run: True  # True False
+    fast_dev_run: False  # True False
     overfit_batches: 0
 
     patience: 10
-    max_epochs: 10
+    max_epochs: 150
     check_val_every_n_epoch: 2
     num_sanity_val_steps: 1
     log_every_n_steps: 10 # 100

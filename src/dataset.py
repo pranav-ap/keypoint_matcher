@@ -14,6 +14,7 @@ import torch
 from PIL import Image
 from torchvision import transforms as T
 import math
+import random
 
 
 def print_hdf5_structure(f):
@@ -49,29 +50,40 @@ def get_patch_boundary(image: Image.Image, center_point, patch_size):
     return left, upper, right, lower
 
 
-def prepare_jitter_reference_patch(image, old_keypoint, patch_size=128):
+def biased_random_symmetric(x, std_factor=0.5):
+    std = x * std_factor  # Spread relative to X
+    return max(-x, min(x, random.gauss(0, std)))  # Clip to [-X, X]
+
+
+def random_symmetric(x):
+    return random.uniform(-x, x)
+
+
+def prepare_jitter_reference_patch(image, old_keypoint, patch_size=128, stage='train'):
     x0, y0 = old_keypoint
+    
+    perturb_x, perturb_y = 0, 0
+    
+    if config.image.jitter_reference and stage == 'train':
+        padding = config.image.patch_padding
 
-    # Define max perturbation to keep old keypoint inside
-    padding = config.image.patch_padding
+        max_perturb_x = max(0, min(
+            patch_size // 2 - 1 - padding,
+            x0 - padding,
+            image.width - x0 - 1 - padding
+        ))
 
-    max_perturb_x = max(0, min(
-        patch_size // 2 - 1 - padding,
-        x0 - padding,
-        image.width - x0 - 1 - padding
-    ))
+        max_perturb_y = max(0, min(
+            patch_size // 2 - 1 - padding,
+            y0 - padding,
+            image.height - y0 - 1 - padding
+        ))
 
-    max_perturb_y = max(0, min(
-        patch_size // 2 - 1 - padding,
-        y0 - padding,
-        image.height - y0 - 1 - padding
-    ))
-
-    perturb_x = np.random.randint(-max_perturb_x, max_perturb_x + 1)
-    perturb_y = np.random.randint(-max_perturb_y, max_perturb_y + 1)
+        perturb_x = random_symmetric(max_perturb_x)
+        perturb_y = random_symmetric(max_perturb_y)
 
     new_x, new_y = x0 + perturb_x, y0 + perturb_y
-
+    
     # Crop centered at the new keypoint
     left, upper, right, lower = get_patch_boundary(image, (new_x, new_y), patch_size)
     patch = image.crop((left, upper, right, lower))
@@ -82,29 +94,32 @@ def prepare_jitter_reference_patch(image, old_keypoint, patch_size=128):
     return patch, old_keypoint
 
 
-def prepare_jitter_target_patch(image, keypoint1, keypoint2, patch_size=128):
+def prepare_jitter_target_patch(image, keypoint1, keypoint2, patch_size=128, stage='train'):
     x0, y0 = keypoint1
     x1, y1 = keypoint2
 
-    # Define max perturbation ensuring both keypoints stay in bounds
-    padding = config.image.patch_padding
+    perturb_x, perturb_y = 0, 0
+    
+    if config.image.jitter_target and stage == 'train':
+        padding = config.image.patch_padding
 
-    max_perturb_x = max(0, min(
-        patch_size // 2 - 1 - padding,
-        x0 - padding, image.width - x0 - 1 - padding,
-        x1 - padding, image.width - x1 - 1 - padding,
-    ))
+        max_perturb_x = max(0, min(
+            patch_size // 2 - 1 - padding,
+            x0 - padding, image.width - x0 - 1 - padding,
+            x1 - padding, image.width - x1 - 1 - padding,
+        ))
 
-    max_perturb_y = max(0, min(
-        patch_size // 2 - 1 - padding,
-        y0 - padding, image.height - y0 - 1 - padding,
-        y1 - padding, image.height - y1 - 1 - padding,
-    ))
+        max_perturb_y = max(0, min(
+            patch_size // 2 - 1 - padding,
+            y0 - padding, image.height - y0 - 1 - padding,
+            y1 - padding, image.height - y1 - 1 - padding,
+        ))
 
-    perturb_x = np.random.randint(-max_perturb_x, max_perturb_x + 1)
-    perturb_y = np.random.randint(-max_perturb_y, max_perturb_y + 1)
-
-    new_x, new_y = (x0 + x1) // 2 + perturb_x, (y0 + y1) // 2 + perturb_y  # Center between keypoints
+        perturb_x = random_symmetric(max_perturb_x)
+        perturb_y = random_symmetric(max_perturb_y)
+        
+    # Center between keypoints
+    new_x, new_y = (x0 + x1) // 2 + perturb_x, (y0 + y1) // 2 + perturb_y  
 
     # Crop centered at the new position
     left, upper, right, lower = get_patch_boundary(image, (new_x, new_y), patch_size)
@@ -234,9 +249,12 @@ class MatchesDataset(torch.utils.data.Dataset):
         guess_keypoint = (x_guess, y_guess)
 
         left_name, right_name = pair_name.split("_")
+        
+        # image_a_path = f"D:/thesis_code/datasets/monado_slam/{DATASET}/mav0/cam{cam}/data/{left_name}.png"
+        # image_b_path = f"D:/thesis_code/datasets/monado_slam/{DATASET}/mav0/cam{cam}/data/{right_name}.png"
 
-        image_a_path = f"D:/thesis_code/datasets/monado_slam/{DATASET}/mav0/cam{cam}/data/{left_name}.png"
-        image_b_path = f"D:/thesis_code/datasets/monado_slam/{DATASET}/mav0/cam{cam}/data/{right_name}.png"
+        image_a_path = f"/home/stud/ath/ath_ws/datasets/monado_slam/{DATASET}/mav0/cam{cam}/data/{left_name}.png"
+        image_b_path = f"/home/stud/ath/ath_ws/datasets/monado_slam/{DATASET}/mav0/cam{cam}/data/{right_name}.png"
 
         ref_image = self._get_image(image_a_path)
         tar_image = self._get_image(image_b_path)
@@ -244,11 +262,13 @@ class MatchesDataset(torch.utils.data.Dataset):
         ref_patch, reference = prepare_jitter_reference_patch(
             ref_image, ref_keypoint,
             patch_size=config.image.patch_size,
+            stage=self.stage,
         )
 
         tar_patch, target, guess = prepare_jitter_target_patch(
             tar_image, tar_keypoint, guess_keypoint,
             patch_size=config.image.patch_size,
+            stage=self.stage,
         )
 
         if self.stage == 'train' and self.image_augmentation_no_kp:
@@ -262,10 +282,10 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         if self.patch_normalize:
             ref_patch = self.patch_normalize(ref_patch)
-            # ref_patch = min_max_normalize(ref_patch, min_val=0.0, max_val=1.0)
+            ref_patch = min_max_normalize(ref_patch, min_val=0.0, max_val=1.0)
 
             tar_patch = self.patch_normalize(tar_patch)
-            # tar_patch = min_max_normalize(tar_patch, min_val=0.0, max_val=1.0)
+            tar_patch = min_max_normalize(tar_patch, min_val=0.0, max_val=1.0)
 
         return ref_patch, reference, tar_patch, target, guess, certainty
 
@@ -290,17 +310,20 @@ class MatchesDataModule(L.LightningDataModule):
 
         self.patch_normalize = T.Compose([
             T.ToTensor(),
-            T.Normalize(mean=[0.5], std=[0.5]),
+            # T.Normalize(mean=[0.5], std=[0.5]),
         ])
 
         self.dataset: Dict[str, MatchesDataset] = {}
 
     def setup(self, stage=None):
         if stage == "fit":
-            df = pd.read_csv("D:/thesis_code/keypoint_matcher/data/train.csv")
+            df = pd.read_csv(config.paths.csv.train)
+            df = df[df["certainty"] >= config.image.patch_min_confidence]
             excess = len(df) % config.train.batch_size
             if excess:
                 df = df.iloc[:-excess]
+
+            logger.info(f'Train Length : {len(df)}')
 
             self.dataset['train'] = MatchesDataset(
                 stage="train",
@@ -310,10 +333,13 @@ class MatchesDataModule(L.LightningDataModule):
                 image_augmentation_no_kp=self.image_augmentation_no_kp,
             )
 
-            df = pd.read_csv("D:/thesis_code/keypoint_matcher/data/val.csv")
+            df = pd.read_csv(config.paths.csv.val)
+            df = df[df["certainty"] >= config.image.patch_min_confidence]
             excess = len(df) % config.train.batch_size
             if excess:
                 df = df.iloc[:-excess]
+                
+            logger.info(f'Val Length : {len(df)}')
 
             self.dataset['val'] = MatchesDataset(
                 stage="val",
@@ -326,10 +352,13 @@ class MatchesDataModule(L.LightningDataModule):
             logger.info(f"Validation Dataset  : {len(self.dataset['val'])} samples")
 
         if stage == "test":
-            df = pd.read_csv("D:/thesis_code/keypoint_matcher/data/test.csv")
+            df = pd.read_csv(config.paths.csv.test)
+            df = df[df["certainty"] >= config.image.patch_min_confidence]
             excess = len(df) % config.train.batch_size
             if excess:
                 df = df.iloc[:-excess]
+                
+            logger.info(f'Test Length : {len(df)}')
 
             self.dataset['test'] = MatchesDataset(
                 stage="test",

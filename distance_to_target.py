@@ -51,7 +51,7 @@ def compute_estimate_accuracy_percentages(target_errors):
 
 def save_high_error_data(target_errors, threshold, training_df):
     high_error_rows = training_df.loc[target_errors > threshold, :]
-    high_error_rows.to_csv("data/high_error_kpids.csv", index=False)
+    high_error_rows.to_csv("/home/stud/ath/ath_ws/datasets/match_april/high_error_kpids.csv", index=False)
     return high_error_rows
 
 
@@ -106,16 +106,14 @@ def plot_dataset_error_counts(dataset_counts):
     plt.show()
 
 
-def main():
+def main(threshold):
     training_df = pd.read_csv(
-        "data/training.csv",
+        "/home/stud/ath/ath_ws/datasets/match_april/training.csv",
         header=0,
         names=(
             "dataset", "cam", "kpid", "pair_name", "x0", "y0", "x1", "y1", "x_guess", "y_guess", "certainty",
         )
     )
-
-    threshold = 100
 
     target_errors = calculate_target_error(training_df)
     reference_errors = calculate_reference_error(training_df)
