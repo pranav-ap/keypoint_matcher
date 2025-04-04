@@ -2,22 +2,14 @@ log_level: WARNING  # TRACE WARNING
 
 experiment:
 
-    # model: shogun
-    # linux: 53 
-    
-    # model: micky 
+    model: trump
+    linux: 53
+
+    # model: frank
     # linux: 57 
 
-    # model: mando
-    # linux: 60 
-    
-    model: jason
-    linux: 75
-
-    params: 5mil
-    heads: 1
-    datasets: mix
-    stddev: 4
+    params: 6mil
+    heads: 2
     name: ${experiment.model}_${experiment.linux}_linux
 
     eda_mode: False  # True False
@@ -27,17 +19,17 @@ image:
     # [width, height]
     original_image_shape: [640, 480]  # [640, 480]
     crop_image_shape: [ 630, 476 ] # [504, 504] [630, 476]
-    patch_size: 128  # 32  82  128
-    patch_size_folder: 100  #  30 75 100
-    patch_padding: 2  # 15
-    jitter_reference: True
+    patch_size: 36 
+    patch_size_folder: 32 
+    patch_padding: 2
+    jitter_reference: False
     jitter_target: True
     patch_min_confidence: 0.2
+    bad_patch_min_confidence: 0.3
 
 
 paths:
     roots:
-#        ws: D:/thesis_code
         ws: /home/stud/ath/ath_ws
         mav: ${paths.roots.ws}/datasets/${task.dataset}/${task.video}/mav0
         project: ${paths.roots.ws}/keypoint_matcher
@@ -76,8 +68,8 @@ val:
     num_patch_pairs_to_save: 80
 
 test:
-    batch_size: 4
+    batch_size: 40
 
-loggers:
+loggers: # []
     #  - tensorboard
    - neptune

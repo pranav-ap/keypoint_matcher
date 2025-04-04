@@ -17,17 +17,6 @@ import math
 import random
 
 
-def print_hdf5_structure(f):
-    def print_group(name, obj):
-        if isinstance(obj, h5py.Group):
-            print(f"Group: {name}")
-
-    try:
-        f.visititems(print_group)
-    except RuntimeError as e:
-        print(f"Skipping corrupted object: {e}")
-
-
 def get_patch_boundary(image: Image.Image, center_point, patch_size):
     image_width, image_height = image.size
     x, y = center_point
@@ -50,7 +39,7 @@ def get_patch_boundary(image: Image.Image, center_point, patch_size):
     return left, upper, right, lower
 
 
-def biased_random_symmetric(x, std_factor=0.5):
+def biased_random_symmetric(x, std_factor=0.35):
     std = x * std_factor  # Spread relative to X
     return max(-x, min(x, random.gauss(0, std)))  # Clip to [-X, X]
 
@@ -132,6 +121,23 @@ def prepare_jitter_target_patch(image, keypoint1, keypoint2, patch_size=128, sta
     return patch, keypoint1_patch, keypoint2_patch
 
 
+def move_keypoints_to_random_location(tar_keypoint, guess_keypoint, img_width, img_height):
+    dx = guess_keypoint[0] - tar_keypoint[0]
+    dy = guess_keypoint[1] - tar_keypoint[1]
+
+    new_x1 = random.randint(0, img_width - 1)
+    new_y1 = random.randint(0, img_height - 1)
+
+    new_x_guess = new_x1 + dx
+    new_y_guess = new_y1 + dy
+
+    # Ensure new guess is within bounds
+    new_x_guess = max(0, min(img_width - 1, new_x_guess))
+    new_y_guess = max(0, min(img_height - 1, new_y_guess))
+
+    return (new_x1, new_y1), (new_x_guess, new_y_guess)
+
+
 def match_collate_fn(batch):
     ref_patches, references, tar_patches, targets, estimates, certainties = zip(*batch)
 
@@ -156,14 +162,11 @@ class MatchesDataset(torch.utils.data.Dataset):
     def __init__(self,
                  stage,
                  df: pd.DataFrame,
-                 perturb_target=False,
                  patch_normalize=None,
                  image_augmentation_no_kp=None,
                  image_augmentation_kp=None):
         self.stage = stage
         self.df = df
-
-        self.perturb_target: bool = perturb_target
 
         self.image_augmentation_no_kp = image_augmentation_no_kp
         self.image_augmentation_kp = image_augmentation_kp
@@ -190,7 +193,7 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         right, lower = left + patch_size, upper + patch_size
 
-        print(f'Left: {left}, Right: {right}, Upper: {upper}, Lower: {lower}')
+        # print(f'Left: {left}, Right: {right}, Upper: {upper}, Lower: {lower}')
 
         assert right > left, f'Left: {left}, Right: {right}'
         assert int(right - left) == patch_size, f'Right - Left: {right - left}'
@@ -198,6 +201,85 @@ class MatchesDataset(torch.utils.data.Dataset):
         assert int(lower - upper) == patch_size, f'Lower - Upper: {lower - upper}'
 
         return left, upper, right, lower
+
+    def _prepare_image(self, idx):
+        row = self.df.iloc[idx, :].values
+
+        [
+            DATASET,
+            cam,
+            kpid,
+            pair_name,
+            x0, y0,
+            x1, y1,
+            x_guess, y_guess,
+            certainty,
+        ] = row
+
+        round_digits = 2
+        x0, y0, x1, y1, x_guess, y_guess = round(x0, round_digits), round(y0, round_digits), round(x1, round_digits), round(y1, round_digits), round(x_guess, round_digits), round(y_guess, round_digits)
+
+        ref_keypoint = (x0, y0)
+        tar_keypoint = (x1, y1)
+        guess_keypoint = (x_guess, y_guess)
+
+        left_name, right_name = pair_name.split("_")
+                
+        image_a_path = f"/home/stud/ath/ath_ws/datasets/monado_slam/{DATASET}/mav0/cam{cam}/data/{left_name}.png"
+        image_b_path = f"/home/stud/ath/ath_ws/datasets/monado_slam/{DATASET}/mav0/cam{cam}/data/{right_name}.png"
+
+        ref_image = self._get_image(image_a_path)
+        tar_image = self._get_image(image_b_path)
+        
+        # if certainty < config.image.bad_patch_min_confidence:
+        #     certainty =  np.float64(0.0) 
+        #     tar_keypoint = guess_keypoint
+
+        if random.random() > 0.6:
+            tar_keypoint, guess_keypoint = move_keypoints_to_random_location(
+                tar_keypoint, guess_keypoint, 
+                640, 480
+            )
+            
+            certainty =  np.float64(0.0) 
+            tar_keypoint = guess_keypoint
+        
+        if self.stage in ['val', 'test']:
+            random.seed(idx)
+
+        ref_patch, reference = prepare_jitter_reference_patch(
+            ref_image, ref_keypoint,
+            patch_size=config.image.patch_size,
+            stage=self.stage,
+        )
+        
+        tar_patch, target, guess = prepare_jitter_target_patch(
+            tar_image, tar_keypoint, guess_keypoint,
+            patch_size=config.image.patch_size,
+            stage=self.stage,
+        )
+        
+        if self.stage == 'train' and self.image_augmentation_no_kp:
+            patch_np = np.array(ref_patch)
+            transformed = self.image_augmentation_no_kp(image=patch_np)
+            ref_patch = Image.fromarray(transformed['image'])
+
+            patch_np = np.array(tar_patch)
+            transformed = self.image_augmentation_no_kp(image=patch_np)
+            tar_patch = Image.fromarray(transformed['image'])
+
+        if self.patch_normalize:
+            ref_patch = self.patch_normalize(ref_patch)
+            ref_patch = min_max_normalize(ref_patch, min_val=0.0, max_val=1.0)
+
+            tar_patch = self.patch_normalize(tar_patch)
+            tar_patch = min_max_normalize(tar_patch, min_val=0.0, max_val=1.0)
+        
+        return ref_patch, reference, tar_patch, target, guess, certainty
+
+    def __getitem__(self, idx):
+        items = self._prepare_image(idx)
+        return items
 
     @staticmethod
     def _warp_to_pixel_coords(warp):
@@ -228,71 +310,6 @@ class MatchesDataset(torch.utils.data.Dataset):
 
         return torch.cat((warp1, warp2), dim=-1)
 
-    def _prepare_image(self, idx):
-        row = self.df.iloc[idx, :].values
-
-        [
-            DATASET,
-            cam,
-            kpid,
-            pair_name,
-            x0, y0,
-            x1, y1,
-            x_guess, y_guess,
-            certainty
-        ] = row
-
-        x0, y0, x1, y1, x_guess, y_guess = round(x0, 2), round(y0, 2), round(x1, 2), round(y1, 2), round(x_guess, 2), round(y_guess, 2)
-
-        ref_keypoint = (x0, y0)
-        tar_keypoint = (x1, y1)
-        guess_keypoint = (x_guess, y_guess)
-
-        left_name, right_name = pair_name.split("_")
-        
-        # image_a_path = f"D:/thesis_code/datasets/monado_slam/{DATASET}/mav0/cam{cam}/data/{left_name}.png"
-        # image_b_path = f"D:/thesis_code/datasets/monado_slam/{DATASET}/mav0/cam{cam}/data/{right_name}.png"
-
-        image_a_path = f"/home/stud/ath/ath_ws/datasets/monado_slam/{DATASET}/mav0/cam{cam}/data/{left_name}.png"
-        image_b_path = f"/home/stud/ath/ath_ws/datasets/monado_slam/{DATASET}/mav0/cam{cam}/data/{right_name}.png"
-
-        ref_image = self._get_image(image_a_path)
-        tar_image = self._get_image(image_b_path)
-
-        ref_patch, reference = prepare_jitter_reference_patch(
-            ref_image, ref_keypoint,
-            patch_size=config.image.patch_size,
-            stage=self.stage,
-        )
-
-        tar_patch, target, guess = prepare_jitter_target_patch(
-            tar_image, tar_keypoint, guess_keypoint,
-            patch_size=config.image.patch_size,
-            stage=self.stage,
-        )
-
-        if self.stage == 'train' and self.image_augmentation_no_kp:
-            patch_np = np.array(ref_patch)
-            transformed = self.image_augmentation_no_kp(image=patch_np)
-            ref_patch = Image.fromarray(transformed['image'])
-
-            patch_np = np.array(tar_patch)
-            transformed = self.image_augmentation_no_kp(image=patch_np)
-            tar_patch = Image.fromarray(transformed['image'])
-
-        if self.patch_normalize:
-            ref_patch = self.patch_normalize(ref_patch)
-            ref_patch = min_max_normalize(ref_patch, min_val=0.0, max_val=1.0)
-
-            tar_patch = self.patch_normalize(tar_patch)
-            tar_patch = min_max_normalize(tar_patch, min_val=0.0, max_val=1.0)
-
-        return ref_patch, reference, tar_patch, target, guess, certainty
-
-    def __getitem__(self, idx):
-        items = self._prepare_image(idx)
-        return items
-
 
 class MatchesDataModule(L.LightningDataModule):
     def __init__(self):
@@ -303,8 +320,8 @@ class MatchesDataModule(L.LightningDataModule):
 
         self.image_augmentation_no_kp = A.Compose(
             transforms=[
-                # A.GaussNoise(p=0.7, std_range=(0.04, 0.07), noise_scale_factor=0.5),
-                A.Defocus(p=0.3, radius=1),
+                A.GaussNoise(p=0.5, std_range=(0.04, 0.07), noise_scale_factor=0.3),
+                A.Defocus(p=0.5, radius=3),
             ]
         )
 
@@ -328,7 +345,6 @@ class MatchesDataModule(L.LightningDataModule):
             self.dataset['train'] = MatchesDataset(
                 stage="train",
                 df=df,
-                perturb_target=True,  # True False
                 patch_normalize=self.patch_normalize,
                 image_augmentation_no_kp=self.image_augmentation_no_kp,
             )
@@ -344,7 +360,6 @@ class MatchesDataModule(L.LightningDataModule):
             self.dataset['val'] = MatchesDataset(
                 stage="val",
                 df=df,
-                perturb_target=True,
                 patch_normalize=self.patch_normalize,
             )
 

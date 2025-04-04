@@ -1,3 +1,5 @@
+import os
+import shutil
 import pandas as pd
 
 
@@ -6,6 +8,12 @@ def filter_high_error_kpids(training_df, high_error_kpids_df):
     high_error_kpids = high_error_kpids_df["kpid"].values
     clean_df = training_df[~training_df["kpid"].isin(high_error_kpids)]
     return clean_df
+
+def mark_high_error_kpids(training_df, high_error_kpids_df):
+    """Mark rows with high error kpids instead of removing them."""
+    high_error_kpids = set(high_error_kpids_df["kpid"].values)
+    training_df["valid"] = ~training_df["kpid"].isin(high_error_kpids)  # True if not high error, False otherwise
+    return training_df
 
 
 def create_datasets(df, splits):
@@ -31,7 +39,7 @@ def print_dataset_stats(clean_train_df, clean_val_df, clean_test_df):
     print(f"Total cleaned dataset size: {total_size} (100%)")
 
 
-def main(threshold = 30):
+def main(threshold=30, patch_size=32):
     splits = {
         'train': [
             "MOO01_hand_puncher_1",
@@ -55,21 +63,50 @@ def main(threshold = 30):
     training_df = pd.read_csv("/home/stud/ath/ath_ws/datasets/match_april/training.csv")
     high_error_kpids_df = pd.read_csv("/home/stud/ath/ath_ws/datasets/match_april/high_error_kpids.csv")
 
-    # Step 1: Filter out high error keypoints from the training data
+    print(f'{len(training_df)=}')
+
+    # clean_df = mark_high_error_kpids(training_df, high_error_kpids_df)
     clean_df = filter_high_error_kpids(training_df, high_error_kpids_df)
 
-    # Step 2: Create clean datasets for train, val, and test splits
-    clean_train_df, clean_val_df, clean_test_df = create_datasets(clean_df, splits)
+    print(f'{len(clean_df)=}')
 
-    # Step 3: Save the cleaned datasets to CSV
-    clean_train_df.to_csv(f"/home/stud/ath/ath_ws/datasets/match_april/{threshold}/train.csv", index=False)
-    clean_val_df.to_csv(f"/home/stud/ath/ath_ws/datasets/match_april/{threshold}/val.csv", index=False)
-    clean_test_df.to_csv(f"/home/stud/ath/ath_ws/datasets/match_april/{threshold}/test.csv", index=False)
+    image_width = 640    
+    image_height = 480
 
-    # Step 4: Print the dataset stats
+    # Keep only rows where (x0, y0) have at least patch_size margin to all sides
+    centered_df = clean_df
+    # [
+    #     (clean_df["x0"] >= patch_size) &
+    #     (clean_df["y0"] >= patch_size) &
+    #     (clean_df["x0"] <= image_width - patch_size) &
+    #     (clean_df["y0"] <= image_height - patch_size)
+    # ]
+
+    print(f'{len(centered_df)=}')
+
+    # valid_count = clean_df["valid"].sum()  # Count of True values (valid rows)
+    # invalid_count = len(clean_df) - valid_count  # Count of False values (invalid rows)
+
+    # print(f"Valid rows: {valid_count}")
+    # print(f"Invalid rows: {invalid_count}")
+
+    clean_train_df, clean_val_df, clean_test_df = create_datasets(centered_df, splits)
+
+    base_path = f"/home/stud/ath/ath_ws/datasets/match_april/{threshold}"
+    
+    if os.path.exists(base_path):
+        shutil.rmtree(base_path) 
+        
+    os.makedirs(base_path) 
+
+    clean_train_df.to_csv(f"{base_path}/train.csv", index=False)
+    clean_val_df.to_csv(f"{base_path}/val.csv", index=False)
+    clean_test_df.to_csv(f"{base_path}/test.csv", index=False)
+    
     print_dataset_stats(clean_train_df, clean_val_df, clean_test_df)
 
-    print('Done!')
+    print("Done!")
+
 
 
 if __name__ == "__main__":

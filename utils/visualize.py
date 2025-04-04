@@ -82,14 +82,14 @@ def show_batch(
         rotations = rotations * (180 / torch.pi) 
 
     try:
-        fs = 12 if config.image.patch_size == 30 else 20
+        fs = 5 if config.image.patch_size_folder == 10 else 12
         font = ImageFont.truetype("arial.ttf", fs)
     except IOError:
         font = ImageFont.load_default() 
 
     patch_size = config.image.patch_size 
     extra_col_gap = 0
-    radius = 3
+    radius = 2 # 3
 
     gap_for_text = 25
 
@@ -176,14 +176,9 @@ def show_batch(
         # Draw rotation value below the patches
         draw = ImageDraw.Draw(combined_image)
 
-        text_x = x1 + patch_size // 2
-        text_y = y + patch_size + 2 * border_size + 10  
-        # draw.text((text_x, text_y), f"{rotation_true}", fill="black", anchor="mm", font=font)
-
-        text_x = x2 - 5 + patch_size // 2
+        text_x = x2 - 12 + patch_size // 2
         text_y = y + patch_size + 2 * border_size + 10  
         
-        # draw.text((text_x, text_y), f"{rotation}, {conf}, {conf_true}", fill="black", anchor="mm", font=font)
         draw.text((text_x, text_y), f"P {conf}, T {conf_true}", fill="black", anchor="mm", font=font)
         
     return combined_image

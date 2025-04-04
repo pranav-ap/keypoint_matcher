@@ -1,83 +1,69 @@
-import lightning.pytorch as pl
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torchmetrics
-from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint, TQDMProgressBar, ModelSummary
-from neptune.types import File
-from config import config
-from utils import show_batch, logger
-
+import numpy as np 
 import torch
 import torch.nn as nn
 import torch.nn.init as init
 import torch.nn.functional as F
-from utils import logger
+import torchmetrics
+import lightning.pytorch as pl
+from lightning.pytorch.callbacks import (
+    EarlyStopping,
+    LearningRateMonitor,
+    ModelCheckpoint,
+    ModelSummary,
+    TQDMProgressBar
+)
+from sklearn.metrics import (
+    precision_score, 
+    recall_score, 
+    f1_score, 
+    roc_auc_score,
+)
+from neptune.types import File
 from config import config
-from .positional_encoding import RoPENd, positionalencoding2d
+from utils import show_batch, logger
+from .positional_encoding import RoPENd
 
 
-def dual_conv(in_channel, out_channel):
-    return nn.Sequential(
-        nn.Conv2d(in_channel, out_channel, kernel_size=3, padding=1),
-        nn.ReLU(inplace=True),
-        nn.Conv2d(out_channel, out_channel, kernel_size=3, padding=1),
-        nn.ReLU(inplace=True),
-    )
+class PreActBasicBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1):
+        super().__init__()
 
+        self.bn1 = nn.BatchNorm2d(in_channels)
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
 
-def get_peak_coords(heatmap):
-    """Finds the (x, y) coordinates of the peak in the heatmap for each sample in the batch."""
-    batch_size = heatmap.shape[0]
-    peak_coords = []
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
 
-    for i in range(batch_size):
-        flat_idx = torch.argmax(heatmap[i])  # Get index of max value for the i-th sample
-        y, x = divmod(flat_idx.item(), heatmap.shape[-1])  # Convert to 2D coordinates
-        peak_coords.append((x, y))
+        self.shortcut = None
+        
+        if in_channels != out_channels or stride != 1:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+            )
 
-    return torch.tensor(peak_coords)
+    def forward(self, x):
+        out = F.relu(self.bn1(x))
+        shortcut = self.shortcut(out) if self.shortcut else x
+        out = self.conv1(out)
+        out = self.conv2(F.relu(self.bn2(out)))
+        out += shortcut
 
-
-def generate_gaussian_heatmap1(size, center, sigma=2):
-    x = torch.arange(0, size, 1, dtype=torch.float32).view(-1, 1).expand(size, size)
-    y = torch.arange(0, size, 1, dtype=torch.float32).view(1, -1).expand(size, size)
-
-    x0, y0 = center
-    heatmap = torch.exp(-((x - x0) ** 2 + (y - y0) ** 2) / (2 * sigma ** 2))
-
-    return heatmap
-
-
-def generate_gaussian_heatmap(size, centers, sigma=2):
-    batch_size = centers.size(0)
-    heatmaps = torch.zeros(batch_size, size, size, dtype=torch.float32)
-
-    # Create a grid of coordinates for the heatmap
-    x = torch.arange(0, size, 1, dtype=torch.float32).view(-1, 1).expand(size, size)
-    y = torch.arange(0, size, 1, dtype=torch.float32).view(1, -1).expand(size, size)
-
-    for i in range(batch_size):
-        x0, y0 = centers[i]
-
-        # Calculate the Gaussian distribution for this center
-        heatmap = torch.exp(-((x - x0) ** 2 + (y - y0) ** 2) / (2 * sigma ** 2))
-
-        # Store the heatmap for the current center
-        heatmaps[i] = heatmap
-
-    return heatmaps
+        return out
 
 
 class MatcherModel(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.heatmap_version = True #  True  False
-
         patch_size = config.image.patch_size
         in_channels = 1
         embedding_length = 32
+        out_channels = 512
+
+        logger.info(f'{patch_size=}')
+        logger.info(f'{in_channels=}')
+        logger.info(f'{embedding_length=}')
+        logger.info(f'{out_channels=}')
 
         self.patch_embedding = nn.Sequential(
             nn.Conv2d(in_channels, embedding_length, 3, 1, 1, bias=False),
@@ -86,55 +72,29 @@ class MatcherModel(nn.Module):
 
         self.positional_encoding = RoPENd((patch_size, patch_size, embedding_length))
 
-        extra = 0 if self.heatmap_version else 2
+        layers = [
+            (embedding_length * 2, 128, 1),
+            (128, 256, 1),
+            (256, 256, 2),
+            (256, out_channels, 2),
+        ]
 
-        self.dwn_conv2 = dual_conv(64 + 2 + extra, 128)
-        self.dwn_conv3 = dual_conv(128, 256)
-        self.dwn_conv4 = dual_conv(256, 512)
-        self.dwn_conv5 = dual_conv(512, 1024)
+        self.backbone = nn.ModuleList([
+            PreActBasicBlock(in_c, out_c, stride) for in_c, out_c, stride in layers
+        ])
 
-        self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.global_pool = nn.AdaptiveAvgPool2d(1)
 
-        self.trans1 = nn.ConvTranspose2d(1024, 512, kernel_size=2, stride=2)
-        self.up_conv1 = dual_conv(1024, 512)
-        self.trans2 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
-        self.up_conv2 = dual_conv(512, 256)
-        self.trans3 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
-        self.up_conv3 = dual_conv(256, 128)
-
-        self.out = nn.Conv2d(128, 1, kernel_size=1)
-
+        self.head = nn.Linear(out_channels + 2, 3) 
         self._initialize_weights()
 
-    def forward(self, ref_patches, tar_patches, references, estimates):
-        if self.heatmap_version:
-            references = generate_gaussian_heatmap(
-                config.image.patch_size,
-                centers=references,
-                sigma=2,
-            )
+    def forward(self, ref_patches, tar_patches, estimates):
+        _, _, height, width = ref_patches.shape
 
-            estimates = generate_gaussian_heatmap(
-                config.image.patch_size,
-                centers=estimates,
-                sigma=2,
-            )
-
-            references = references.unsqueeze(1)
-            estimates = estimates.unsqueeze(1)
-
-        else:
-            _, _, height, width = ref_patches.shape
-
-            references = references.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, height, width)
-            estimates = estimates.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, height, width)
-
-            # normalize to 0 to 1
-            references = references / (height - 1)
-            estimates = estimates / (height - 1)
-            # normalize to -1 to 1
-            references = references * 2 - 1
-            estimates = estimates * 2 - 1
+        # normalize to 0 to 1
+        estimates = estimates / (height - 1)
+        # normalize to -1 to 1
+        estimates = estimates * 2 - 1
 
         """
         Patch Embedding
@@ -147,6 +107,8 @@ class MatcherModel(nn.Module):
         # (b, h, w, c) -> (b, c, h, w)
         ref_patches = ref_patches.permute(0, 3, 1, 2).contiguous()
 
+        logger.debug(f'1 {ref_patches.shape=}')
+
         tar_patches = self.patch_embedding(tar_patches)
         # (b, c, h, w) -> (b, h, w, c)
         tar_patches = tar_patches.permute(0, 2, 3, 1).contiguous()
@@ -158,35 +120,35 @@ class MatcherModel(nn.Module):
         PreActBasicBlock ResNet 
         """
 
-        print(f'{ref_patches.shape=}')
-        print(f'{references.shape=}')
+        x = torch.cat([ref_patches, tar_patches], dim=1)
+        logger.debug(f'2 {x.shape=}')
 
-        x = torch.cat([ref_patches, tar_patches, references, estimates], dim=1)
-        print(f'{x.shape=}')
+        for layer in self.backbone:
+            x = layer(x)
 
-        x3 = self.dwn_conv2(x)
-        x4 = self.maxpool(x3)
-        x5 = self.dwn_conv3(x4)
-        x6 = self.maxpool(x5)
-        x7 = self.dwn_conv4(x6)
-        x8 = self.maxpool(x7)
-        x9 = self.dwn_conv5(x8)
+        logger.debug(f'3 {x.shape=}')
 
-        x = self.trans1(x9)
-        x = self.up_conv1(torch.cat([x, x7], 1))
+        x = self.global_pool(x)
 
-        x = self.trans2(x)
-        x = self.up_conv2(torch.cat([x, x5], 1))
+        logger.debug(f'4 {x.shape=}')
+        x = torch.flatten(x, start_dim=1)
+        logger.debug(f'5 {x.shape=}')
 
-        x = self.trans3(x)
-        x = self.up_conv3(torch.cat([x, x3], 1))
+        """
+        Linear Layer
+        """
 
-        x = self.out(x)  # Raw heatmap logits
-        x = torch.sigmoid(x)  # Convert to [0,1] range for probability
+        x = torch.cat([x, estimates], dim=1)
+        logger.debug(f'6 {x.shape=}')
+        
+        x = self.head(x)
 
-        peak_coords = get_peak_coords(x)
-
-        return x, peak_coords
+        logger.debug(f'7 {x.shape=}')
+        
+        coords = torch.tanh(x[:, :2]) 
+        confs = torch.sigmoid(x[:, 2])  
+        
+        return coords, confs 
 
     def _initialize_weights(self):
         for m in self.modules():
@@ -210,7 +172,7 @@ class MatcherModel(nn.Module):
                 init.zeros_(m.bias)
 
 
-class Light_UNET(pl.LightningModule):
+class Light(pl.LightningModule):
     def __init__(self, neptune_logger=None, tensorboard_logger=None):
         super().__init__()
 
@@ -232,69 +194,80 @@ class Light_UNET(pl.LightningModule):
             ]
         )
 
-    def forward(self, reference_patches, target_patches, reference_coords, estimates=None):    
+    def forward(self, reference_patches, target_patches, estimates):    
         pred = self.model(
             reference_patches,
             target_patches,
-            reference_coords,
             estimates,
         )
 
         return pred
 
     @staticmethod
-    def _compute_coords_accuracy_percentage(coords_pred, target, pixels=1):
+    def _compute_coords_accuracy_percentage(coords_pred, target, pixels=1.0):
+        target = target.to(coords_pred.device)
+        
         difference = torch.abs(coords_pred - target)
-
-        # Check which differences exceed N pixels
         exceeds = (difference > pixels).any(dim=1)
-        # Calculate the percentage
         percentage = (exceeds.sum().item() / coords_pred.shape[0]) * 100
 
         return percentage
-    
-    @staticmethod
-    def _compute_coords_loss(coords_pred, references, targets, estimates):
-        targets_norm = Light_UNET._normalize_coords(targets.float())
-        coords_pred_norm = Light_UNET._normalize_coords(coords_pred.float())
-
-        loss = F.l1_loss(coords_pred_norm, targets_norm)
-
-        return loss
 
     def _shared_step(self, batch, stage='train'):
-        ref_patches, references, tar_patches, targets, estimates, confidences = batch
+        ref_patches, references, tar_patches, targets, estimates, confs_true = batch
 
-        predicted_heatmap, coords_pred = self.model(
+        coords_delta_norm_pred, confs_pred = self.model(
             ref_patches,
             tar_patches,
-            references,
             estimates,
         ) 
 
-        conf_pred = torch.ones(len(coords_pred), device=coords_pred.device)  # fake
+        assert not torch.isnan(coords_delta_norm_pred).any(), "NaN detected in coords_delta_norm_pred"
+        assert not torch.isnan(confs_pred).any(), "NaN detected in confs_pred"
 
-        # Calculate Loss
+        coords_delta_pred = coords_delta_norm_pred.float() * ((config.image.patch_size - 1) / 2)
+        coords_pred = estimates + coords_delta_pred  
+        
+        confs_pred_binary = (confs_pred > 0.5).float()
+        
+        # Compute losses
+        
+        targets_norm = Light._normalize_coords(targets.float())
+        estimates_norm = Light._normalize_coords(estimates.float())
+        coords_delta_norm_true = targets_norm - estimates_norm
 
-        coords_loss = self._compute_coords_loss(
-            coords_pred,
-            references,
-            targets, 
-            estimates,
-        )
+        coords_loss = F.l1_loss(coords_delta_norm_pred, coords_delta_norm_true, reduction="none")
+        coords_loss = (coords_loss * confs_true.unsqueeze(1)).mean()
+    
+        confs_loss = F.mse_loss(confs_pred, confs_true)
+        # confs_loss = coords_loss 
 
-        heatmap_loss = F.mse_loss(predicted_heatmap, targets)
+        alpha = 0.5
+        loss = coords_loss + alpha * confs_loss 
 
-        loss = coords_loss + heatmap_loss
+        # Calculate Coords metrics
 
-        # Calculate metrics
-
-        coords_percent_2_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=2)
+        coords_percent_3_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=3.0)
+        coords_percent_2_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=2.0)
         coords_percent_15_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.5)
         coords_percent_125_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.25)
-        coords_percent_1_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1)
+        coords_percent_1_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.0)
+        coords_percent_05_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=0.5)
 
         coords_mae = self.mae(coords_pred, targets.squeeze(1))
+        # coords_std = torch.std(torch.norm(coords_pred - targets, dim=-1))
+
+        # Calculate Confs metrics
+
+        # confs_true_numpy = confs_true.cpu().detach().numpy()
+        # confs_pred_binary_numpy = confs_pred_binary.cpu().detach().numpy()
+
+        # conf_accuracy = (confs_pred_binary_numpy == confs_true_numpy).astype(np.float32)
+        # conf_accuracy = conf_accuracy.mean()
+        
+        # conf_precision = precision_score(confs_true_numpy, confs_pred_binary_numpy)
+        # conf_recall = recall_score(confs_true_numpy, confs_pred_binary_numpy)
+        # conf_f1 = f1_score(confs_true_numpy, confs_pred_binary_numpy)
 
         # Collect
 
@@ -304,17 +277,24 @@ class Light_UNET(pl.LightningModule):
         metrics = {
             f"{stage}/loss": loss,
             f"{stage}/coords_loss": coords_loss,
-            f"{stage}/conf_loss": coords_loss,  # fake
+            f"{stage}/conf_loss": confs_loss, 
 
             f"{stage}/coords_mae": coords_mae,
-
+            # f"{stage}/coords_std": coords_std,
+            f"{stage}/coords_percent_3_pixel": coords_percent_3_pixel,
             f"{stage}/coords_percent_2_pixel": coords_percent_2_pixel,
             f"{stage}/coords_percent_15_pixel": coords_percent_15_pixel,
             f"{stage}/coords_percent_125_pixel": coords_percent_125_pixel,
             f"{stage}/coords_percent_1_pixel": coords_percent_1_pixel,
+            f"{stage}/coords_percent_05_pixel": coords_percent_05_pixel,
+            
+            # f"{stage}/conf_accuracy": conf_accuracy,
+            # f"{stage}/conf_precision": conf_precision,
+            # f"{stage}/conf_recall": conf_recall,
+            # f"{stage}/conf_f1": conf_f1,
         }
-
-        return metrics, coords_pred, conf_pred
+        
+        return metrics, coords_pred, confs_pred_binary
 
     def training_step(self, batch, batch_idx):
         metrics, coords_pred, conf_pred = self._shared_step(batch, stage='train')
@@ -356,6 +336,20 @@ class Light_UNET(pl.LightningModule):
 
     def _log_images(self, batch, target_coords, confidence_pred=None, limit_count=None, stage=None):
         ref_patches, references, tar_patches, targets, estimates, confidences = batch
+        
+        mae_per_patch = torch.abs(target_coords - targets.squeeze(1)).mean(dim=1)
+        
+        if limit_count is not None:
+            worst_indices = torch.argsort(mae_per_patch, descending=True)[:limit_count]
+            
+            ref_patches = ref_patches[worst_indices]
+            tar_patches = tar_patches[worst_indices]
+            references = references[worst_indices]
+            targets = targets[worst_indices]
+            estimates = estimates[worst_indices]
+            target_coords = target_coords[worst_indices]
+            confidence_pred = confidence_pred[worst_indices] if confidence_pred is not None else None
+            confidences = confidences[worst_indices]
         
         image_grid = show_batch(
             ref_patches, tar_patches,
@@ -415,18 +409,21 @@ class Light_UNET(pl.LightningModule):
             save_last=True,
         )
 
-        progress_bar_callback = TQDMProgressBar(refresh_rate=5) 
-        lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
-
+        progress_bar_callback = TQDMProgressBar(refresh_rate=50, leave=False) 
         summary_callback = ModelSummary(max_depth=1)
 
-        return [
+        callbacks = [
             early_stop_callback,
             checkpoint_callback,
             progress_bar_callback,
-            lr_monitor_callback,
             summary_callback,
         ]
+        
+        if len(config.loggers):
+            lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
+            callbacks.append(lr_monitor_callback)
+        
+        return callbacks 
 
     @staticmethod
     def _normalize_coords(coords):

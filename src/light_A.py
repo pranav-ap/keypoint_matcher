@@ -65,10 +65,15 @@ class MatcherModel(nn.Module):
 
         self.positional_encoding = RoPENd((patch_size, patch_size, embedding_length))
 
+        layers = [
+            (embedding_length * 2, 128, 1),
+            (128, 256, 1),
+            (256, 256, 2),
+            (256, out_channels, 2),
+        ]
+
         self.backbone = nn.ModuleList([
-            PreActBasicBlock(embedding_length * 2, 128, 1),
-            PreActBasicBlock(128, 256, 1),
-            PreActBasicBlock(256, out_channels, 2),
+            PreActBasicBlock(in_c, out_c, stride) for in_c, out_c, stride in layers
         ])
 
         self.global_pool = nn.AdaptiveAvgPool2d(1)
@@ -139,7 +144,6 @@ class MatcherModel(nn.Module):
         """
 
         x = torch.tanh(x[:, :2])
-        logger.debug(f'8 {x.shape=}')
 
         return x
 
@@ -165,7 +169,7 @@ class MatcherModel(nn.Module):
                 init.zeros_(m.bias)
 
 
-class Light_A(pl.LightningModule):
+class Light(pl.LightningModule):
     def __init__(self, neptune_logger=None, tensorboard_logger=None):
         super().__init__()
 
@@ -210,11 +214,13 @@ class Light_A(pl.LightningModule):
     
     @staticmethod
     def _compute_coords_loss(coords_delta_norm_pred, references, targets, estimates):
-        targets_norm = Light_A._normalize_coords(targets.float())
-        estimates_norm = Light_A._normalize_coords(estimates.float())
+        targets_norm = Light._normalize_coords(targets.float())
+        estimates_norm = Light._normalize_coords(estimates.float())
 
         coords_delta_norm_true = targets_norm - estimates_norm
+
         loss = F.l1_loss(coords_delta_norm_pred, coords_delta_norm_true)
+        # loss = torch.mean(torch.log(torch.cosh(coords_delta_norm_pred - coords_delta_norm_true + 1e-12)))
 
         return loss
 
@@ -232,9 +238,11 @@ class Light_A(pl.LightningModule):
 
         coords_delta_pred = coords_delta_norm_pred.float() * ((config.image.patch_size - 1) / 2)
         coords_pred = estimates + coords_delta_pred  
+        
+        confs_pred = torch.ones(len(coords_pred), device=coords_pred.device)  # fake
 
-        conf_pred = torch.ones(len(coords_pred), device=coords_pred.device)  # fake
-
+        # Compute losses
+        
         coords_loss = self._compute_coords_loss(
             coords_delta_norm_pred, 
             references,
@@ -243,7 +251,7 @@ class Light_A(pl.LightningModule):
         )
 
         loss = coords_loss
-
+        
         # Calculate metrics
 
         coords_percent_2_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=2.0)
@@ -261,6 +269,7 @@ class Light_A(pl.LightningModule):
         metrics = {
             f"{stage}/loss": loss,
             f"{stage}/coords_loss": coords_loss,
+            # f"{stage}/deviation_penalty": deviation_penalty,
             f"{stage}/conf_loss": coords_loss,  # fake
 
             f"{stage}/coords_mae": coords_mae,
@@ -271,7 +280,7 @@ class Light_A(pl.LightningModule):
             f"{stage}/coords_percent_1_pixel": coords_percent_1_pixel,
         }
 
-        return metrics, coords_pred, conf_pred
+        return metrics, coords_pred, confs_pred
 
     def training_step(self, batch, batch_idx):
         metrics, coords_pred, conf_pred = self._shared_step(batch, stage='train')

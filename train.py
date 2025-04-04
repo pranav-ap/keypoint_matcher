@@ -3,7 +3,7 @@ from config import config
 import lightning.pytorch as pl
 import torch
 
-from src import Light_A as Light, MatchesDataModule
+from src import Light, MatchesDataModule
 from utils import logger, make_clear_directory, MyLogger
 
 torch.set_float32_matmul_precision('medium')
@@ -20,13 +20,6 @@ def train():
         loggers.append(neptune_logger)
     if tensorboard_logger is not None:
         loggers.append(tensorboard_logger)
-
-    # checkpoint_path = '/home/stud/ath/ath_ws/keypoint_matcher/output/smallnet_depthwise/checkpoints/last.ckpt'
-    # light = Light.load_from_checkpoint(
-    #     checkpoint_path,
-    #     neptune_logger=neptune_logger,
-    #     tensorboard_logger=tensorboard_logger,
-    # )
 
     light = Light(
         neptune_logger=neptune_logger,
