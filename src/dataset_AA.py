@@ -338,9 +338,13 @@ class MatchesDataModule(L.LightningDataModule):
         if stage == "fit":
             df = pd.read_csv(config.paths.csv.train)
             df = df[df["certainty"] > config.image.patch_min_confidence]
-            # df = df[df["valid"] == False]
 
+            valid_df = df[df["valid"] == True]
+            invalid_df = df[df["valid"] == False]
+            invalid_df = invalid_df.sample(frac=0.2, random_state=42)
+            df = pd.concat([valid_df, invalid_df], ignore_index=True)
             df = df.sample(frac=1).reset_index(drop=True)
+            
             excess = len(df) % config.train.batch_size
             if excess:
                 df = df.iloc[:-excess]
@@ -351,14 +355,13 @@ class MatchesDataModule(L.LightningDataModule):
                 stage="train",
                 df=df,
                 patch_normalize=self.patch_normalize,
-                image_augmentation_no_kp=self.image_augmentation_no_kp,
+                # image_augmentation_no_kp=self.image_augmentation_no_kp,
             )
 
             df = pd.read_csv(config.paths.csv.val)
             df = df[df["certainty"] > config.image.patch_min_confidence]
-            # df = df[df["valid"] == False]
-
             df = df.sample(frac=1).reset_index(drop=True)
+            
             excess = len(df) % config.train.batch_size
             if excess:
                 df = df.iloc[:-excess]
@@ -377,9 +380,8 @@ class MatchesDataModule(L.LightningDataModule):
         if stage == "test":
             df = pd.read_csv(config.paths.csv.test)
             df = df[df["certainty"] > config.image.patch_min_confidence]
-            # df = df[df["valid"] == False]
-
             df = df.sample(frac=1).reset_index(drop=True)
+            
             excess = len(df) % config.train.batch_size
             if excess:
                 df = df.iloc[:-excess]

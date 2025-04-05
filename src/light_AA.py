@@ -51,7 +51,7 @@ class MatcherModel(nn.Module):
 
         patch_size = config.image.patch_size
         in_channels = 1
-        embedding_length = 16
+        embedding_length = 32
         out_channels = 512
 
         logger.info(f'{patch_size=}')
@@ -67,10 +67,9 @@ class MatcherModel(nn.Module):
         self.positional_encoding = RoPENd((patch_size, patch_size, embedding_length))
 
         layers = [
-            (embedding_length * 2, 64, 1),
-            (64, 128, 1),
+            (embedding_length * 2, 128, 1),
             (128, 256, 1),
-            (256, 256, 1),
+            (256, 256, 2),
             (256, out_channels, 2),
         ]
 
@@ -79,9 +78,7 @@ class MatcherModel(nn.Module):
         ])
 
         self.global_pool = nn.AdaptiveAvgPool2d(1)
-
-        self.head = nn.Linear(out_channels + 2, 3) 
-        
+        self.head = nn.Linear(out_channels + 2, 3)         
         self._initialize_weights()
 
     def forward(self, ref_patches, tar_patches, estimates):
@@ -103,8 +100,6 @@ class MatcherModel(nn.Module):
         # (b, h, w, c) -> (b, c, h, w)
         ref_patches = ref_patches.permute(0, 3, 1, 2).contiguous()
 
-        logger.debug(f'1 {ref_patches.shape=}')
-
         tar_patches = self.patch_embedding(tar_patches)
         # (b, c, h, w) -> (b, h, w, c)
         tar_patches = tar_patches.permute(0, 2, 3, 1).contiguous()
@@ -117,28 +112,22 @@ class MatcherModel(nn.Module):
         """
 
         x = torch.cat([ref_patches, tar_patches], dim=1)
-        logger.debug(f'2 {x.shape=}')
 
         for layer in self.backbone:
             x = layer(x)
 
-        logger.debug(f'3 {x.shape=}')
-
         x = self.global_pool(x)
-
-        logger.debug(f'4 {x.shape=}')
         x = torch.flatten(x, start_dim=1)
-        logger.debug(f'5 {x.shape=}')
 
         """
-        Linear Layer
+        Linear Layers for Separate Heads
         """
         
         x = torch.cat([x, estimates], dim=1)
         x = self.head(x)
         
-        coords = F.tanh(x[:, :2])  
-        confs = F.sigmoid(x[:, 2])
+        coords = F.tanh(x[:, :2]) 
+        confs = F.sigmoid(x[:, 2]) 
         
         return coords, confs 
 
@@ -202,8 +191,6 @@ class Light(pl.LightningModule):
 
     @staticmethod
     def _compute_coords_accuracy_percentage(coords_pred, target, pixels=1.0):
-        target = target.to(coords_pred.device)
-        
         difference = torch.abs(coords_pred - target)
         exceeds = (difference > pixels).any(dim=1)
         percentage = (exceeds.sum().item() / coords_pred.shape[0]) * 100
@@ -212,12 +199,12 @@ class Light(pl.LightningModule):
     
     def _shared_step(self, batch, stage='train'):
         ref_patches, references, tar_patches, targets, estimates, confs_true = batch
-        assert torch.isfinite(ref_patches).all(), "Invalid values in ref_patches"
-        assert torch.isfinite(tar_patches).all(), "Invalid values in tar_patches"
-        assert torch.isfinite(references).all(), "Invalid values in references"
-        assert torch.isfinite(estimates).all(), "Invalid values in estimates"
-        assert torch.isfinite(targets).all(), "Invalid values in targets"
-        assert (confs_true >= 0).all() and (confs_true <= 1).all(), "Invalid values in confs_true"
+        # assert torch.isfinite(ref_patches).all(), "Invalid values in ref_patches"
+        # assert torch.isfinite(tar_patches).all(), "Invalid values in tar_patches"
+        # assert torch.isfinite(references).all(), "Invalid values in references"
+        # assert torch.isfinite(estimates).all(), "Invalid values in estimates"
+        # assert torch.isfinite(targets).all(), "Invalid values in targets"
+        # assert (confs_true >= 0).all() and (confs_true <= 1).all(), "Invalid values in confs_true"
 
         coords_delta_norm_pred, confs_pred = self.model(
             ref_patches,
@@ -225,14 +212,14 @@ class Light(pl.LightningModule):
             estimates,
         ) 
 
-        assert torch.isfinite(confs_pred).any(), "NaN detected in confs_pred"
-        assert torch.isfinite(coords_delta_norm_pred).any(), "NaN detected in coords_delta_norm_pred"
+        # assert torch.isfinite(confs_pred).any(), "NaN detected in confs_pred"
+        # assert torch.isfinite(coords_delta_norm_pred).any(), "NaN detected in coords_delta_norm_pred"
 
         coords_delta_pred = coords_delta_norm_pred.float() * ((config.image.patch_size - 1) / 2)
         coords_pred = estimates + coords_delta_pred  
         
         confs_pred_binary = (confs_pred > 0.5).float()
-        confs_true_binary = (confs_true > 0.5).float()
+        confs_true_binary = confs_true.float() #.unsqueeze(1)
         
         # Compute losses
         
@@ -240,12 +227,12 @@ class Light(pl.LightningModule):
         estimates_norm = Light._normalize_coords(estimates.float())
         coords_delta_norm_true = targets_norm - estimates_norm
 
-        assert torch.isfinite(targets_norm).any(), "NaN detected in targets_norm"
-        assert torch.isfinite(estimates_norm).any(), "NaN detected in estimates_norm"
-        assert torch.isfinite(coords_delta_norm_true).any(), "NaN detected in coords_delta_norm_true"
+        # assert torch.isfinite(targets_norm).any(), "NaN detected in targets_norm"
+        # assert torch.isfinite(estimates_norm).any(), "NaN detected in estimates_norm"
+        # assert torch.isfinite(coords_delta_norm_true).any(), "NaN detected in coords_delta_norm_true"
 
-        coords_loss = F.l1_loss(coords_delta_norm_pred, coords_delta_norm_true)
-        confs_loss = F.binary_cross_entropy(confs_pred, confs_true) 
+        coords_loss = F.mse_loss(coords_delta_norm_pred, coords_delta_norm_true)
+        confs_loss = F.binary_cross_entropy(confs_pred, confs_true_binary) 
 
         alpha = 0.5
         alpha_confs_loss = alpha * confs_loss 
@@ -260,7 +247,7 @@ class Light(pl.LightningModule):
         coords_percent_1_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.0)
         coords_percent_05_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=0.5)
 
-        coords_mae = self.mae(coords_pred, targets.squeeze(1))
+        coords_mae = self.mae(coords_pred, targets)
 
         # Calculate Confs metrics
 

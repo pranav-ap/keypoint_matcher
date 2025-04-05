@@ -2,14 +2,20 @@ log_level: WARNING  # TRACE WARNING
 
 experiment:
 
-    model: ryan 
+    # model: jon  
+    # linux: 50
+
+    model: junior  
     linux: 53
 
     # model: frank
     # linux: 57 
 
-    params: 7mil
-    heads: 2
+    # model: tim
+    # linux: 75 
+
+    params: 6mil
+    heads: 2 
     name: ${experiment.model}_${experiment.linux}_linux
 
     eda_mode: False  # True False
@@ -19,8 +25,8 @@ image:
     # [width, height]
     original_image_shape: [640, 480]  # [640, 480]
     crop_image_shape: [ 630, 476 ] # [504, 504] [630, 476]
-    patch_size: 36 
-    patch_size_folder: 32 
+    patch_size: 32 # 36 
+    patch_size_folder: 26 # 32 
     patch_padding: 2
     jitter_reference: False
     jitter_target: True
