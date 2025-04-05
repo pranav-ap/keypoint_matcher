@@ -2,13 +2,13 @@ log_level: WARNING  # TRACE WARNING
 
 experiment:
 
-    model: trump
+    model: ryan 
     linux: 53
 
     # model: frank
     # linux: 57 
 
-    params: 6mil
+    params: 7mil
     heads: 2
     name: ${experiment.model}_${experiment.linux}_linux
 
@@ -24,8 +24,33 @@ image:
     patch_padding: 2
     jitter_reference: False
     jitter_target: True
-    patch_min_confidence: 0.2
-    bad_patch_min_confidence: 0.3
+    patch_min_confidence: -1
+    bad_patch_min_confidence: 0.2
+
+
+train:
+    batch_size: 40 # 20  12
+    accumulate_grad_batches: 4
+    learning_rate: 1e-4   # 1e-4    
+
+    fast_dev_run: False  # True False
+    overfit_batches: 0
+
+    patience: 10
+    max_epochs: 250
+    check_val_every_n_epoch: 2
+    num_sanity_val_steps: 1
+    log_every_n_steps: 25 
+    
+val:
+    num_patch_pairs_to_save: 80
+
+test:
+    batch_size: 40
+
+
+loggers: # []
+   - neptune
 
 
 paths:
@@ -50,26 +75,3 @@ paths:
         test: ${paths.roots.ws}/datasets/match_april/${image.patch_size_folder}/test.csv
 
 
-train:
-    batch_size: 40 # 20  12
-    accumulate_grad_batches: 4
-    learning_rate: 1e-4   # 1e-4    
-
-    fast_dev_run: False  # True False
-    overfit_batches: 0
-
-    patience: 10
-    max_epochs: 150
-    check_val_every_n_epoch: 2
-    num_sanity_val_steps: 1
-    log_every_n_steps: 10 # 100
-    
-val:
-    num_patch_pairs_to_save: 80
-
-test:
-    batch_size: 40
-
-loggers: # []
-    #  - tensorboard
-   - neptune

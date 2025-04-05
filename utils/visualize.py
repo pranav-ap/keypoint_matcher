@@ -102,12 +102,11 @@ def show_batch(
 
     confs = None
     if confidence_pred is not None:
-        # confs = F.sigmoid(confidence_pred)
         confs = confidence_pred
 
     def prepare_patch(patch, x, y, color):
-        # patch = denormalize(patch)
-        patch = min_max_normalize(patch, min_val=0.0, max_val=1.0)
+        patch = denormalize(patch)
+        # patch = min_max_normalize(patch, min_val=0.0, max_val=1.0)
         patch = to_pil(patch)
 
         if patch.mode != "RGB":
@@ -116,16 +115,13 @@ def show_batch(
         draw_im = ImageDraw.Draw(patch)
         draw_im.ellipse((x - radius, y - radius, x + radius, y + radius), outline=color)
         
-        # height = 4
-        # draw_im.line([(x, height + 10), (x, height)], fill="red", width=1)
-
         patch = patch.resize((patch_size, patch_size))
         patch = ImageOps.expand(patch, border=border_size, fill=border_color)
         return patch
 
     def prepare_target_patch(patch, x, y, a, b, p, q, rot=None):
-        # patch = denormalize(patch)
-        patch = min_max_normalize(patch, min_val=0.0, max_val=1.0)
+        patch = denormalize(patch)
+        # patch = min_max_normalize(patch, min_val=0.0, max_val=1.0)
         patch = to_pil(patch)
 
         if patch.mode != "RGB":
@@ -150,18 +146,13 @@ def show_batch(
 
         reference_patch = prepare_patch(reference_patch, x, y, color='red')
 
-        rotation_true = f"{rotations_true[i].item():.2f}°" if rotations_true is not None else '-'
-        rotation = f"{rotations[i].item():.2f}°" if rotations is not None else '-'
         conf_true = f"{confidences_true[i].item():.2f}" if confidences_true is not None else '-'
         conf = f"{confs[i].item():.2f}" if confidence_pred is not None else '-'
         
-        # if confidence_pred is not None and float(conf) > 0.2:
-        #     conf = f'{conf} $$'
-
         target_patch = target_patches[i]
         x, y = patch_level_target_coords[i]
         a, b = patch_level_target_coords_true[i]
-        target_patch = prepare_target_patch(target_patch, x, y, a, b, p, q) #, rotations[i].item())
+        target_patch = prepare_target_patch(target_patch, x, y, a, b, p, q) 
 
         row = i // n_columns
         col = i % n_columns

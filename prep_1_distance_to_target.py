@@ -80,19 +80,30 @@ def plot_error_relationship(reference_errors, target_errors):
     plt.show()
 
 
-def plot_histograms(target_errors, reference_errors):
+def remove_outliers(data, threshold=1.5):
+    q1, q3 = np.percentile(data, [25, 75])
+    iqr = q3 - q1
+    lower, upper = q1 - threshold * iqr, q3 + threshold * iqr
+    return data[(data >= lower) & (data <= upper)]
+
+
+def plot_histograms(target_errors, reference_errors, remove_outliers_flag=False):
+    target_plot = remove_outliers(np.array(target_errors)) if remove_outliers_flag else target_errors
+    reference_plot = remove_outliers(np.array(reference_errors)) if remove_outliers_flag else reference_errors
+
     plt.figure(figsize=(12, 5))
     plt.subplot(1, 2, 1)
-    plt.hist(target_errors, bins=50, alpha=0.7, color='b')
+    plt.hist(target_plot, bins=50, alpha=0.7, color='b')
     plt.title("Histogram of Target Errors")
     plt.xlabel("Error")
     plt.ylabel("Frequency")
 
     plt.subplot(1, 2, 2)
-    plt.hist(reference_errors, bins=50, alpha=0.7, color='r')
+    plt.hist(reference_plot, bins=50, alpha=0.7, color='r')
     plt.title("Histogram of Reference Errors")
     plt.xlabel("Error")
     plt.ylabel("Frequency")
+    
     plt.show()
 
 
@@ -137,7 +148,7 @@ def main(threshold):
     pprint(correlation_results)
 
     plot_error_relationship(reference_errors, target_errors)
-    plot_histograms(target_errors, reference_errors)
+    plot_histograms(target_errors, reference_errors, remove_outliers_flag=True)
     plot_dataset_error_counts(dataset_counts)
 
     print('Done!')

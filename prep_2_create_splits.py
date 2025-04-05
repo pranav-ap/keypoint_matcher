@@ -1,6 +1,7 @@
 import os
 import shutil
 import pandas as pd
+import random
 
 
 def filter_high_error_kpids(training_df, high_error_kpids_df):
@@ -16,8 +17,34 @@ def mark_high_error_kpids(training_df, high_error_kpids_df):
     return training_df
 
 
+def generate_random_keypoint(image_width, image_height, patch_margin):
+    x = random.randint(patch_margin, image_width - patch_margin - 1)
+    y = random.randint(patch_margin, image_height - patch_margin - 1)
+    return x, y
+
+
+def augment_with_random_patches(df, image_width=640, image_height=480):
+    new_rows = []
+    for _, row in df.iterrows():
+        x1, y1 = generate_random_keypoint(image_width, image_height, patch_margin=52)
+        x_guess, y_guess = x1, y1
+        # x_guess = x1 + random.randint(-2, 2)
+        # y_guess = y1 + random.randint(-2, 2)
+
+        new_row = row.copy()
+        new_row["x1"] = x1
+        new_row["y1"] = y1
+        new_row["x_guess"] = x_guess
+        new_row["y_guess"] = y_guess
+        new_row["certainty"] = 0.0
+        new_row["valid"] = False
+
+        new_rows.append(new_row)
+
+    return pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True)
+
+
 def create_datasets(df, splits):
-    """Create clean training, validation, and test datasets based on the splits dictionary."""
     train_df = df[df["dataset"].isin(splits['train'])]
     val_df = df[df["dataset"].isin(splits['val'])]
     test_df = df[df["dataset"].isin(splits['test'])]
@@ -74,23 +101,30 @@ def main(threshold=30, patch_size=32):
     image_height = 480
 
     # Keep only rows where (x0, y0) have at least patch_size margin to all sides
-    centered_df = clean_df
-    # [
-    #     (clean_df["x0"] >= patch_size) &
-    #     (clean_df["y0"] >= patch_size) &
-    #     (clean_df["x0"] <= image_width - patch_size) &
-    #     (clean_df["y0"] <= image_height - patch_size)
-    # ]
+    # centered_df = clean_df
+    
+    centered_df = clean_df[
+        (clean_df["x0"] >= patch_size // 2) &
+        (clean_df["y0"] >= patch_size // 2) &
+        (clean_df["x0"] <= image_width - patch_size // 2 - 1) &
+        (clean_df["y0"] <= image_height - patch_size // 2 - 1)
+    ]
 
     print(f'{len(centered_df)=}')
 
-    # valid_count = clean_df["valid"].sum()  # Count of True values (valid rows)
-    # invalid_count = len(clean_df) - valid_count  # Count of False values (invalid rows)
-
-    # print(f"Valid rows: {valid_count}")
-    # print(f"Invalid rows: {invalid_count}")
-
     clean_train_df, clean_val_df, clean_test_df = create_datasets(centered_df, splits)
+
+    clean_train_df.loc[:, "valid"] = True
+    clean_val_df.loc[:, "valid"] = True
+    clean_test_df.loc[:, "valid"] = True
+
+    clean_train_df = augment_with_random_patches(clean_train_df, image_width, image_height)
+    
+    valid_count = clean_train_df["valid"].sum()  # Count of True values (valid rows)
+    invalid_count = len(clean_train_df) - valid_count  # Count of False values (invalid rows)
+
+    print(f"Valid rows: {valid_count}")
+    print(f"Invalid rows: {invalid_count}")
 
     base_path = f"/home/stud/ath/ath_ws/datasets/match_april/{threshold}"
     

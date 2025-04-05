@@ -12,12 +12,6 @@ from lightning.pytorch.callbacks import (
     ModelSummary,
     TQDMProgressBar
 )
-from sklearn.metrics import (
-    precision_score, 
-    recall_score, 
-    f1_score, 
-    roc_auc_score,
-)
 from neptune.types import File
 from config import config
 from utils import show_batch, logger
@@ -57,7 +51,7 @@ class MatcherModel(nn.Module):
 
         patch_size = config.image.patch_size
         in_channels = 1
-        embedding_length = 32
+        embedding_length = 16
         out_channels = 512
 
         logger.info(f'{patch_size=}')
@@ -73,9 +67,10 @@ class MatcherModel(nn.Module):
         self.positional_encoding = RoPENd((patch_size, patch_size, embedding_length))
 
         layers = [
-            (embedding_length * 2, 128, 1),
+            (embedding_length * 2, 64, 1),
+            (64, 128, 1),
             (128, 256, 1),
-            (256, 256, 2),
+            (256, 256, 1),
             (256, out_channels, 2),
         ]
 
@@ -86,6 +81,7 @@ class MatcherModel(nn.Module):
         self.global_pool = nn.AdaptiveAvgPool2d(1)
 
         self.head = nn.Linear(out_channels + 2, 3) 
+        
         self._initialize_weights()
 
     def forward(self, ref_patches, tar_patches, estimates):
@@ -137,16 +133,12 @@ class MatcherModel(nn.Module):
         """
         Linear Layer
         """
-
+        
         x = torch.cat([x, estimates], dim=1)
-        logger.debug(f'6 {x.shape=}')
-        
         x = self.head(x)
-
-        logger.debug(f'7 {x.shape=}')
         
-        coords = torch.tanh(x[:, :2]) 
-        confs = torch.sigmoid(x[:, 2])  
+        coords = F.tanh(x[:, :2])  
+        confs = F.sigmoid(x[:, 2])
         
         return coords, confs 
 
@@ -182,7 +174,12 @@ class Light(pl.LightningModule):
         self.model = MatcherModel() 
 
         self.learning_rate = config.train.learning_rate
+
         self.mae = torchmetrics.MeanAbsoluteError()
+        self.conf_accuracy = torchmetrics.Accuracy(task="binary")
+        self.conf_precision = torchmetrics.Precision(task="binary")
+        self.conf_recall = torchmetrics.Recall(task="binary")
+        self.conf_f1 = torchmetrics.F1Score(task="binary")
 
         self.save_hyperparameters({
             'learning_rate': self.learning_rate,
@@ -212,9 +209,15 @@ class Light(pl.LightningModule):
         percentage = (exceeds.sum().item() / coords_pred.shape[0]) * 100
 
         return percentage
-
+    
     def _shared_step(self, batch, stage='train'):
         ref_patches, references, tar_patches, targets, estimates, confs_true = batch
+        assert torch.isfinite(ref_patches).all(), "Invalid values in ref_patches"
+        assert torch.isfinite(tar_patches).all(), "Invalid values in tar_patches"
+        assert torch.isfinite(references).all(), "Invalid values in references"
+        assert torch.isfinite(estimates).all(), "Invalid values in estimates"
+        assert torch.isfinite(targets).all(), "Invalid values in targets"
+        assert (confs_true >= 0).all() and (confs_true <= 1).all(), "Invalid values in confs_true"
 
         coords_delta_norm_pred, confs_pred = self.model(
             ref_patches,
@@ -222,13 +225,14 @@ class Light(pl.LightningModule):
             estimates,
         ) 
 
-        assert not torch.isnan(coords_delta_norm_pred).any(), "NaN detected in coords_delta_norm_pred"
-        assert not torch.isnan(confs_pred).any(), "NaN detected in confs_pred"
+        assert torch.isfinite(confs_pred).any(), "NaN detected in confs_pred"
+        assert torch.isfinite(coords_delta_norm_pred).any(), "NaN detected in coords_delta_norm_pred"
 
         coords_delta_pred = coords_delta_norm_pred.float() * ((config.image.patch_size - 1) / 2)
         coords_pred = estimates + coords_delta_pred  
         
         confs_pred_binary = (confs_pred > 0.5).float()
+        confs_true_binary = (confs_true > 0.5).float()
         
         # Compute losses
         
@@ -236,14 +240,16 @@ class Light(pl.LightningModule):
         estimates_norm = Light._normalize_coords(estimates.float())
         coords_delta_norm_true = targets_norm - estimates_norm
 
-        coords_loss = F.l1_loss(coords_delta_norm_pred, coords_delta_norm_true, reduction="none")
-        coords_loss = (coords_loss * confs_true.unsqueeze(1)).mean()
-    
-        confs_loss = F.mse_loss(confs_pred, confs_true)
-        # confs_loss = coords_loss 
+        assert torch.isfinite(targets_norm).any(), "NaN detected in targets_norm"
+        assert torch.isfinite(estimates_norm).any(), "NaN detected in estimates_norm"
+        assert torch.isfinite(coords_delta_norm_true).any(), "NaN detected in coords_delta_norm_true"
+
+        coords_loss = F.l1_loss(coords_delta_norm_pred, coords_delta_norm_true)
+        confs_loss = F.binary_cross_entropy(confs_pred, confs_true) 
 
         alpha = 0.5
-        loss = coords_loss + alpha * confs_loss 
+        alpha_confs_loss = alpha * confs_loss 
+        loss = coords_loss + alpha_confs_loss
 
         # Calculate Coords metrics
 
@@ -255,19 +261,13 @@ class Light(pl.LightningModule):
         coords_percent_05_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=0.5)
 
         coords_mae = self.mae(coords_pred, targets.squeeze(1))
-        # coords_std = torch.std(torch.norm(coords_pred - targets, dim=-1))
 
         # Calculate Confs metrics
 
-        # confs_true_numpy = confs_true.cpu().detach().numpy()
-        # confs_pred_binary_numpy = confs_pred_binary.cpu().detach().numpy()
-
-        # conf_accuracy = (confs_pred_binary_numpy == confs_true_numpy).astype(np.float32)
-        # conf_accuracy = conf_accuracy.mean()
-        
-        # conf_precision = precision_score(confs_true_numpy, confs_pred_binary_numpy)
-        # conf_recall = recall_score(confs_true_numpy, confs_pred_binary_numpy)
-        # conf_f1 = f1_score(confs_true_numpy, confs_pred_binary_numpy)
+        conf_accuracy = self.conf_accuracy(confs_pred_binary, confs_true_binary)
+        conf_precision = self.conf_precision(confs_pred_binary, confs_true_binary)
+        conf_recall = self.conf_recall(confs_pred_binary, confs_true_binary)
+        conf_f1 = self.conf_f1(confs_pred_binary, confs_true_binary)
 
         # Collect
 
@@ -278,9 +278,9 @@ class Light(pl.LightningModule):
             f"{stage}/loss": loss,
             f"{stage}/coords_loss": coords_loss,
             f"{stage}/conf_loss": confs_loss, 
+            f"{stage}/alpha_confs_loss": alpha_confs_loss, 
 
             f"{stage}/coords_mae": coords_mae,
-            # f"{stage}/coords_std": coords_std,
             f"{stage}/coords_percent_3_pixel": coords_percent_3_pixel,
             f"{stage}/coords_percent_2_pixel": coords_percent_2_pixel,
             f"{stage}/coords_percent_15_pixel": coords_percent_15_pixel,
@@ -288,12 +288,12 @@ class Light(pl.LightningModule):
             f"{stage}/coords_percent_1_pixel": coords_percent_1_pixel,
             f"{stage}/coords_percent_05_pixel": coords_percent_05_pixel,
             
-            # f"{stage}/conf_accuracy": conf_accuracy,
-            # f"{stage}/conf_precision": conf_precision,
-            # f"{stage}/conf_recall": conf_recall,
-            # f"{stage}/conf_f1": conf_f1,
+            f"{stage}/conf_accuracy": conf_accuracy,
+            f"{stage}/conf_precision": conf_precision,
+            f"{stage}/conf_recall": conf_recall,
+            f"{stage}/conf_f1": conf_f1,
         }
-        
+                        
         return metrics, coords_pred, confs_pred_binary
 
     def training_step(self, batch, batch_idx):
@@ -376,7 +376,7 @@ class Light(pl.LightningModule):
             )
 
     def configure_optimizers(self):        
-        # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate, momentum=0.6)
+        # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate, momentum=0.2)
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
         # weight_decay=0.1
 
