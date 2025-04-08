@@ -45,7 +45,7 @@ def train():
         overfit_batches=config.train.overfit_batches,
         enable_model_summary=False,
         enable_checkpointing=True,
-        gradient_clip_val=1.0,
+        gradient_clip_val=0.5,
     )
 
     trainer.fit(light, datamodule=dm)

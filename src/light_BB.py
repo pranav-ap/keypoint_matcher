@@ -1,3 +1,4 @@
+import numpy as np 
 import torch
 import torch.nn as nn
 import torch.nn.init as init
@@ -15,6 +16,9 @@ from neptune.types import File
 from config import config
 from utils import show_batch, logger
 from .positional_encoding import RoPENd
+
+
+torch.set_float32_matmul_precision('medium')
 
 
 class PreActBasicBlock(nn.Module):
@@ -50,7 +54,7 @@ class MatcherModel(nn.Module):
 
         patch_size = config.image.patch_size
         in_channels = 1
-        embedding_length = 32
+        embedding_length = 64
         out_channels = 512
 
         logger.info(f'{patch_size=}')
@@ -66,10 +70,9 @@ class MatcherModel(nn.Module):
         self.positional_encoding = RoPENd((patch_size, patch_size, embedding_length))
 
         layers = [
-            (embedding_length * 2, 128, 1),
-            (128, 256, 1),
-            (256, 256, 2),
-            (256, out_channels, 2),
+            (embedding_length * 2, 256, 1),
+            (256, 512, 1),
+            (512, out_channels, 2),
         ]
 
         self.backbone = nn.ModuleList([
@@ -78,18 +81,20 @@ class MatcherModel(nn.Module):
 
         self.global_pool = nn.AdaptiveAvgPool2d(1)
 
-        self.head = nn.Linear(out_channels + 4, 2)
-
+        self.head = nn.Sequential(
+            nn.Linear(out_channels + 2, 128),
+            nn.ReLU(),
+            nn.Linear(128, 3)
+        )
+     
         self._initialize_weights()
 
-    def forward(self, ref_patches, tar_patches, references, estimates):
+    def forward(self, ref_patches, tar_patches, estimates):
         _, _, height, width = ref_patches.shape
 
         # normalize to 0 to 1
-        references = references / (height - 1)
         estimates = estimates / (height - 1)
         # normalize to -1 to 1
-        references = references * 2 - 1
         estimates = estimates * 2 - 1
 
         """
@@ -103,8 +108,6 @@ class MatcherModel(nn.Module):
         # (b, h, w, c) -> (b, c, h, w)
         ref_patches = ref_patches.permute(0, 3, 1, 2).contiguous()
 
-        logger.debug(f'1 {ref_patches.shape=}')
-
         tar_patches = self.patch_embedding(tar_patches)
         # (b, c, h, w) -> (b, h, w, c)
         tar_patches = tar_patches.permute(0, 2, 3, 1).contiguous()
@@ -117,35 +120,24 @@ class MatcherModel(nn.Module):
         """
 
         x = torch.cat([ref_patches, tar_patches], dim=1)
-        logger.debug(f'2 {x.shape=}')
 
         for layer in self.backbone:
             x = layer(x)
 
-        logger.debug(f'3 {x.shape=}')
-
         x = self.global_pool(x)
-
-        logger.debug(f'4 {x.shape=}')
         x = torch.flatten(x, start_dim=1)
-        logger.debug(f'5 {x.shape=}')
 
         """
-        Linear Layer
+        Linear Layers for Separate Heads
         """
-
-        x = torch.cat([x, references, estimates], dim=1)
-        logger.debug(f'6 {x.shape=}')
+        
+        x = torch.cat([x, estimates], dim=1)
         x = self.head(x)
-        logger.debug(f'7 {x.shape=}')
-
-        """
-        Final Activations
-        """
-
-        x = torch.tanh(x[:, :2])
-
-        return x
+        
+        coords = F.tanh(x[:, :2]) 
+        confs = F.sigmoid(x[:, 2]) 
+        
+        return coords, confs 
 
     def _initialize_weights(self):
         for m in self.modules():
@@ -179,7 +171,12 @@ class Light(pl.LightningModule):
         self.model = MatcherModel() 
 
         self.learning_rate = config.train.learning_rate
+
         self.mae = torchmetrics.MeanAbsoluteError()
+        self.conf_accuracy = torchmetrics.Accuracy(task="binary")
+        self.conf_precision = torchmetrics.Precision(task="binary")
+        self.conf_recall = torchmetrics.Recall(task="binary")
+        self.conf_f1 = torchmetrics.F1Score(task="binary")
 
         self.save_hyperparameters({
             'learning_rate': self.learning_rate,
@@ -191,75 +188,113 @@ class Light(pl.LightningModule):
             ]
         )
 
-    def forward(self, reference_patches, target_patches, reference_coords, estimates=None):    
+    def forward(self, reference_patches, target_patches, estimates):    
         pred = self.model(
             reference_patches,
             target_patches,
-            reference_coords,
             estimates,
         )
 
         return pred
 
     @staticmethod
-    def _compute_coords_accuracy_percentage(coords_pred, target, pixels=1.0):
+    def _compute_coords_accuracy_percentage(coords_pred, target, pixels=1.0, mask=None):
+        if mask is not None:
+            coords_pred = coords_pred[mask]
+            target = target[mask]
+            
+        if coords_pred.numel() == 0:
+            return 0.0
+        
         difference = torch.abs(coords_pred - target)
-
-        # Check which differences exceed N pixels
         exceeds = (difference > pixels).any(dim=1)
-        # Calculate the percentage
         percentage = (exceeds.sum().item() / coords_pred.shape[0]) * 100
-
         return percentage
-    
-    @staticmethod
-    def _compute_coords_loss(coords_delta_norm_pred, references, targets, estimates):
-        targets_norm = Light._normalize_coords(targets.float())
-        estimates_norm = Light._normalize_coords(estimates.float())
-
-        coords_delta_norm_true = targets_norm - estimates_norm
-
-        loss = F.l1_loss(coords_delta_norm_pred, coords_delta_norm_true)
-        # loss = torch.mean(torch.log(torch.cosh(coords_delta_norm_pred - coords_delta_norm_true + 1e-12)))
-
-        return loss
 
     def _shared_step(self, batch, stage='train'):
-        ref_patches, references, tar_patches, targets, estimates, confidences = batch
+        ref_patches, references, tar_patches, targets, estimates, confs_true, tar_patches_fake, targets_fake, estimates_fake = batch 
+    
+        # assert torch.isfinite(ref_patches).all(), "Invalid values in ref_patches"
+        # assert torch.isfinite(tar_patches).all(), "Invalid values in tar_patches"
+        # assert torch.isfinite(references).all(), "Invalid values in references"
+        # assert torch.isfinite(estimates).all(), "Invalid values in estimates"
+        # assert torch.isfinite(targets).all(), "Invalid values in targets"
+        # assert (confs_true >= 0).all() and (confs_true <= 1).all(), "Invalid values in confs_true"
 
-        coords_delta_norm_pred = self.model(
+        ref_patches = torch.cat([ref_patches, ref_patches], dim=0)
+        tar_patches = torch.cat([tar_patches, tar_patches_fake], dim=0)
+        estimates = torch.cat([estimates, estimates_fake], dim=0)
+        targets = torch.cat([targets, targets_fake], dim=0)
+
+        second_half = torch.zeros_like(confs_true, dtype=torch.float32)  
+        confs_true = torch.cat([confs_true, second_half], dim=0)
+
+        coords_delta_norm_pred, confs_pred = self.model(
             ref_patches,
             tar_patches,
-            references,
             estimates,
         ) 
 
-        # Calculate Loss
+        # assert torch.isfinite(confs_pred).any(), "NaN detected in confs_pred"
+        # assert torch.isfinite(coords_delta_norm_pred).any(), "NaN detected in coords_delta_norm_pred"
 
         coords_delta_pred = coords_delta_norm_pred.float() * ((config.image.patch_size - 1) / 2)
         coords_pred = estimates + coords_delta_pred  
         
-        confs_pred = torch.ones(len(coords_pred), device=coords_pred.device)  # fake
-
+        confs_pred_binary = (confs_pred > 0.5).float()
+        confs_true_binary = confs_true.float()
+        
         # Compute losses
         
-        coords_loss = self._compute_coords_loss(
-            coords_delta_norm_pred, 
-            references,
-            targets, 
-            estimates,
-        )
+        targets_norm = Light._normalize_coords(targets.float())
+        estimates_norm = Light._normalize_coords(estimates.float())
+        coords_delta_norm_true = targets_norm - estimates_norm
 
-        loss = coords_loss
+        # assert torch.isfinite(targets_norm).any(), "NaN detected in targets_norm"
+        # assert torch.isfinite(estimates_norm).any(), "NaN detected in estimates_norm"
+        # assert torch.isfinite(coords_delta_norm_true).any(), "NaN detected in coords_delta_norm_true"
+
+        true_mask = confs_true_binary.squeeze() == 1
         
-        # Calculate metrics
+        coords_loss = F.l1_loss(coords_delta_norm_pred[true_mask], coords_delta_norm_true[true_mask], reduction='none').mean()
+        confs_loss = F.binary_cross_entropy(confs_pred, confs_true_binary) 
 
+        # Weighted loss
+        alpha = 0.05
+        alpha_confs_loss = alpha * confs_loss
+        loss = coords_loss + alpha_confs_loss
+
+        # Calculate Coords metrics
+
+        coords_percent_3_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=3.0)
         coords_percent_2_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=2.0)
         coords_percent_15_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.5)
         coords_percent_125_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.25)
         coords_percent_1_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.0)
+        coords_percent_05_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=0.5)
 
-        coords_mae = self.mae(coords_pred, targets.squeeze(1))
+        coords_mae = self.mae(coords_pred, targets)
+        
+        coords_percent_3_pixel_true = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=3.0, mask=true_mask)
+        coords_percent_2_pixel_true = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=2.0, mask=true_mask)
+        coords_percent_15_pixel_true = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.5, mask=true_mask)
+        coords_percent_125_pixel_true = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.25, mask=true_mask)
+        coords_percent_1_pixel_true = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.0, mask=true_mask)
+        coords_percent_05_pixel_true = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=0.5, mask=true_mask)
+
+        coords_mae_true = None 
+        
+        if true_mask.any():
+            coords_mae_true = self.mae(coords_pred[true_mask], targets[true_mask])
+        else:
+            coords_mae_true = torch.tensor(0.0, device=coords_pred.device)
+
+        # Calculate Confs metrics
+
+        conf_accuracy = self.conf_accuracy(confs_pred_binary, confs_true_binary)
+        conf_precision = self.conf_precision(confs_pred_binary, confs_true_binary)
+        conf_recall = self.conf_recall(confs_pred_binary, confs_true_binary)
+        conf_f1 = self.conf_f1(confs_pred_binary, confs_true_binary)
 
         # Collect
 
@@ -269,17 +304,31 @@ class Light(pl.LightningModule):
         metrics = {
             f"{stage}/loss": loss,
             f"{stage}/coords_loss": coords_loss,
-            # f"{stage}/deviation_penalty": deviation_penalty,
-            f"{stage}/conf_loss": coords_loss,  # fake
+            f"{stage}/conf_loss": confs_loss, 
+            f"{stage}/alpha_confs_loss": alpha_confs_loss, 
 
             f"{stage}/coords_mae": coords_mae,
-
+            f"{stage}/coords_percent_3_pixel": coords_percent_3_pixel,
             f"{stage}/coords_percent_2_pixel": coords_percent_2_pixel,
             f"{stage}/coords_percent_15_pixel": coords_percent_15_pixel,
             f"{stage}/coords_percent_125_pixel": coords_percent_125_pixel,
             f"{stage}/coords_percent_1_pixel": coords_percent_1_pixel,
+            f"{stage}/coords_percent_05_pixel": coords_percent_05_pixel,
+            
+            f"{stage}/coords_mae_true": coords_mae_true,
+            f"{stage}/coords_percent_3_pixel_true": coords_percent_3_pixel_true,
+            f"{stage}/coords_percent_2_pixel_true": coords_percent_2_pixel_true,
+            f"{stage}/coords_percent_15_pixel_true": coords_percent_15_pixel_true,
+            f"{stage}/coords_percent_125_pixel_true": coords_percent_125_pixel_true,
+            f"{stage}/coords_percent_1_pixel_true": coords_percent_1_pixel_true,
+            f"{stage}/coords_percent_05_pixel_true": coords_percent_05_pixel_true,
+            
+            f"{stage}/conf_accuracy": conf_accuracy,
+            f"{stage}/conf_precision": conf_precision,
+            f"{stage}/conf_recall": conf_recall,
+            f"{stage}/conf_f1": conf_f1,
         }
-
+                        
         return metrics, coords_pred, confs_pred
 
     def training_step(self, batch, batch_idx):
@@ -322,10 +371,9 @@ class Light(pl.LightningModule):
 
     def _log_images(self, batch, target_coords, confidence_pred=None, limit_count=None, stage=None):
         ref_patches, references, tar_patches, targets, estimates, confidences = batch
-        
-        mae_per_patch = torch.abs(target_coords - targets.squeeze(1)).mean(dim=1)
-        
+                
         if limit_count is not None:
+            mae_per_patch = torch.abs(target_coords - targets.squeeze(1)).mean(dim=1)
             worst_indices = torch.argsort(mae_per_patch, descending=True)[:limit_count]
             
             ref_patches = ref_patches[worst_indices]
@@ -362,7 +410,7 @@ class Light(pl.LightningModule):
             )
 
     def configure_optimizers(self):        
-        # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate, momentum=0.6)
+        # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate, momentum=0.2)
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
         # weight_decay=0.1
 
@@ -396,17 +444,20 @@ class Light(pl.LightningModule):
         )
 
         progress_bar_callback = TQDMProgressBar(refresh_rate=50, leave=False) 
-        lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
-
         summary_callback = ModelSummary(max_depth=1)
 
-        return [
+        callbacks = [
             early_stop_callback,
             checkpoint_callback,
             progress_bar_callback,
-            lr_monitor_callback,
             summary_callback,
         ]
+        
+        if len(config.loggers):
+            lr_monitor_callback = LearningRateMonitor(logging_interval='epoch')
+            callbacks.append(lr_monitor_callback)
+        
+        return callbacks 
 
     @staticmethod
     def _normalize_coords(coords):

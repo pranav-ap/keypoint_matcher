@@ -2,19 +2,19 @@ log_level: WARNING  # TRACE WARNING
 
 experiment:
 
-    # model: jon  
+    # model: arjan #  benny bishop  alan  jon  
     # linux: 50
 
-    model: junior  
-    linux: 53
+    # model: andor # crew  tesla  akila  junior  
+    # linux: 53
 
-    # model: frank
-    # linux: 57 
+    model: alex # eddie tom  harris  sam  abby  frank
+    linux: 57 
 
-    # model: tim
+    # model: vader # potter  pulse  peyton 
     # linux: 75 
 
-    params: 6mil
+    params: 9mil
     heads: 2 
     name: ${experiment.model}_${experiment.linux}_linux
 
@@ -30,20 +30,21 @@ image:
     patch_padding: 2
     jitter_reference: False
     jitter_target: True
+    max_perturb: 5
     patch_min_confidence: -1
     bad_patch_min_confidence: 0.2
 
 
 train:
-    batch_size: 40 # 20  12
+    batch_size: 20 # 40 
     accumulate_grad_batches: 4
     learning_rate: 1e-4   # 1e-4    
 
     fast_dev_run: False  # True False
     overfit_batches: 0
 
-    patience: 10
-    max_epochs: 250
+    patience: 20
+    max_epochs: 300
     check_val_every_n_epoch: 2
     num_sanity_val_steps: 1
     log_every_n_steps: 25 
@@ -76,8 +77,8 @@ paths:
     images: ${paths.roots.mav}/${task.cam}/data
 
     csv:
-        train: ${paths.roots.ws}/datasets/match_april/${image.patch_size_folder}/train.csv
-        val: ${paths.roots.ws}/datasets/match_april/${image.patch_size_folder}/val.csv
-        test: ${paths.roots.ws}/datasets/match_april/${image.patch_size_folder}/test.csv
+        train: ${paths.roots.ws}/datasets/match_april/${image.patch_size_folder}_inline/train.csv
+        val: ${paths.roots.ws}/datasets/match_april/${image.patch_size_folder}_inline/val.csv
+        test: ${paths.roots.ws}/datasets/match_april/${image.patch_size_folder}_inline/test.csv
 
 

@@ -18,6 +18,9 @@ from utils import show_batch, logger
 from .positional_encoding import RoPENd
 
 
+torch.set_float32_matmul_precision('medium')
+
+
 class PreActBasicBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super().__init__()
@@ -51,7 +54,7 @@ class MatcherModel(nn.Module):
 
         patch_size = config.image.patch_size
         in_channels = 1
-        embedding_length = 32
+        embedding_length = 64
         out_channels = 512
 
         logger.info(f'{patch_size=}')
@@ -67,10 +70,9 @@ class MatcherModel(nn.Module):
         self.positional_encoding = RoPENd((patch_size, patch_size, embedding_length))
 
         layers = [
-            (embedding_length * 2, 128, 1),
-            (128, 256, 1),
-            (256, 256, 2),
-            (256, out_channels, 2),
+            (embedding_length * 2, 256, 1),
+            (256, 512, 1),
+            (512, out_channels, 2),
         ]
 
         self.backbone = nn.ModuleList([
@@ -78,7 +80,13 @@ class MatcherModel(nn.Module):
         ])
 
         self.global_pool = nn.AdaptiveAvgPool2d(1)
-        self.head = nn.Linear(out_channels + 2, 3)         
+
+        self.head = nn.Sequential(
+            nn.Linear(out_channels + 2, 128),
+            nn.ReLU(),
+            nn.Linear(128, 3)
+        )
+     
         self._initialize_weights()
 
     def forward(self, ref_patches, tar_patches, estimates):
@@ -190,12 +198,19 @@ class Light(pl.LightningModule):
         return pred
 
     @staticmethod
-    def _compute_coords_accuracy_percentage(coords_pred, target, pixels=1.0):
+    def _compute_coords_accuracy_percentage(coords_pred, target, pixels=1.0, mask=None):
+        if mask is not None:
+            coords_pred = coords_pred[mask]
+            target = target[mask]
+            
+        if coords_pred.numel() == 0:
+            return 0.0
+        
         difference = torch.abs(coords_pred - target)
         exceeds = (difference > pixels).any(dim=1)
         percentage = (exceeds.sum().item() / coords_pred.shape[0]) * 100
-
         return percentage
+
     
     def _shared_step(self, batch, stage='train'):
         ref_patches, references, tar_patches, targets, estimates, confs_true = batch
@@ -231,11 +246,15 @@ class Light(pl.LightningModule):
         # assert torch.isfinite(estimates_norm).any(), "NaN detected in estimates_norm"
         # assert torch.isfinite(coords_delta_norm_true).any(), "NaN detected in coords_delta_norm_true"
 
-        coords_loss = F.mse_loss(coords_delta_norm_pred, coords_delta_norm_true)
+        # coords_loss = F.l1_loss(coords_delta_norm_pred, coords_delta_norm_true)
+        coords_loss = F.l1_loss(coords_delta_norm_pred, coords_delta_norm_true, reduction='none')
+        coords_loss = (coords_loss.sum(dim=1) * confs_true).mean()
+
         confs_loss = F.binary_cross_entropy(confs_pred, confs_true_binary) 
 
-        alpha = 0.5
-        alpha_confs_loss = alpha * confs_loss 
+        # Weighted loss
+        alpha = 0.05
+        alpha_confs_loss = alpha * confs_loss
         loss = coords_loss + alpha_confs_loss
 
         # Calculate Coords metrics
@@ -248,6 +267,21 @@ class Light(pl.LightningModule):
         coords_percent_05_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=0.5)
 
         coords_mae = self.mae(coords_pred, targets)
+
+        true_mask = confs_true_binary.squeeze() == 1
+        coords_percent_3_pixel_true = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=3.0, mask=true_mask)
+        coords_percent_2_pixel_true = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=2.0, mask=true_mask)
+        coords_percent_15_pixel_true = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.5, mask=true_mask)
+        coords_percent_125_pixel_true = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.25, mask=true_mask)
+        coords_percent_1_pixel_true = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.0, mask=true_mask)
+        coords_percent_05_pixel_true = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=0.5, mask=true_mask)
+
+        coords_mae_true = None 
+        
+        if true_mask.any():
+            coords_mae_true = self.mae(coords_pred[true_mask], targets[true_mask])
+        else:
+            coords_mae_true = torch.tensor(0.0, device=coords_pred.device)
 
         # Calculate Confs metrics
 
@@ -275,13 +309,21 @@ class Light(pl.LightningModule):
             f"{stage}/coords_percent_1_pixel": coords_percent_1_pixel,
             f"{stage}/coords_percent_05_pixel": coords_percent_05_pixel,
             
+            f"{stage}/coords_mae_true": coords_mae_true,
+            f"{stage}/coords_percent_3_pixel_true": coords_percent_3_pixel_true,
+            f"{stage}/coords_percent_2_pixel_true": coords_percent_2_pixel_true,
+            f"{stage}/coords_percent_15_pixel_true": coords_percent_15_pixel_true,
+            f"{stage}/coords_percent_125_pixel_true": coords_percent_125_pixel_true,
+            f"{stage}/coords_percent_1_pixel_true": coords_percent_1_pixel_true,
+            f"{stage}/coords_percent_05_pixel_true": coords_percent_05_pixel_true,
+            
             f"{stage}/conf_accuracy": conf_accuracy,
             f"{stage}/conf_precision": conf_precision,
             f"{stage}/conf_recall": conf_recall,
             f"{stage}/conf_f1": conf_f1,
         }
                         
-        return metrics, coords_pred, confs_pred_binary
+        return metrics, coords_pred, confs_pred
 
     def training_step(self, batch, batch_idx):
         metrics, coords_pred, conf_pred = self._shared_step(batch, stage='train')
@@ -323,10 +365,9 @@ class Light(pl.LightningModule):
 
     def _log_images(self, batch, target_coords, confidence_pred=None, limit_count=None, stage=None):
         ref_patches, references, tar_patches, targets, estimates, confidences = batch
-        
-        mae_per_patch = torch.abs(target_coords - targets.squeeze(1)).mean(dim=1)
-        
+                
         if limit_count is not None:
+            mae_per_patch = torch.abs(target_coords - targets.squeeze(1)).mean(dim=1)
             worst_indices = torch.argsort(mae_per_patch, descending=True)[:limit_count]
             
             ref_patches = ref_patches[worst_indices]

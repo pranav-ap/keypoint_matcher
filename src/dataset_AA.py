@@ -72,6 +72,7 @@ def get_patch_boundary(image: Image.Image, center_point, patch_size):
 
 
 def random_symmetric(x):
+    x = min(config.image.max_perturb, x) 
     return random.uniform(-x, x)
 
 
@@ -202,8 +203,8 @@ class MatchesDataset(torch.utils.data.Dataset):
         return image
 
     def _prepare_image(self, idx):
-        # if self.stage in ['val', 'test']:
-        random.seed(idx)
+        if self.stage in ['val', 'test']:
+            random.seed(idx)
         
         row = self.df.iloc[idx, :].values
 
@@ -219,7 +220,7 @@ class MatchesDataset(torch.utils.data.Dataset):
             valid,
         ] = row
 
-        round_digits = 5
+        round_digits = 2
         x0, y0, x1, y1, x_guess, y_guess = round(x0, round_digits), round(y0, round_digits), round(x1, round_digits), round(y1, round_digits), round(x_guess, round_digits), round(y_guess, round_digits)
         assert all(not pd.isna(v) for v in [x0, y0, x1, y1, x_guess, y_guess]), f"NaN incoming!"
         
@@ -341,8 +342,9 @@ class MatchesDataModule(L.LightningDataModule):
 
             valid_df = df[df["valid"] == True]
             invalid_df = df[df["valid"] == False]
-            invalid_df = invalid_df.sample(frac=0.2, random_state=42)
+            invalid_df = invalid_df.sample(frac=0.25, random_state=42)
             df = pd.concat([valid_df, invalid_df], ignore_index=True)
+            
             df = df.sample(frac=1).reset_index(drop=True)
             
             excess = len(df) % config.train.batch_size

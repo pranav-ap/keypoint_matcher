@@ -18,8 +18,8 @@ def mark_high_error_kpids(training_df, high_error_kpids_df):
 
 
 def generate_random_keypoint(image_width, image_height, patch_margin):
-    x = random.randint(patch_margin, image_width - patch_margin - 1)
-    y = random.randint(patch_margin, image_height - patch_margin - 1)
+    x = random.uniform(patch_margin, image_width - patch_margin)
+    y = random.uniform(patch_margin, image_height - patch_margin)
     return x, y
 
 
@@ -42,6 +42,27 @@ def augment_with_random_patches(df, image_width=640, image_height=480):
         new_rows.append(new_row)
 
     return pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True)
+
+
+def augment_with_random_patches_inline(df, image_width=640, image_height=480):
+    df = df.copy()
+
+    x1_list, y1_list, xg_list, yg_list = [], [], [], []
+
+    for _ in df.itertuples():
+        x1, y1 = generate_random_keypoint(image_width, image_height, patch_margin=52)
+        x1_list.append(x1)
+        y1_list.append(y1)
+        xg_list.append(x1)  # or add slight offset if you want
+        yg_list.append(y1)
+
+    df["x1_fake"] = x1_list
+    df["y1_fake"] = y1_list
+    df["x_guess_fake"] = xg_list
+    df["y_guess_fake"] = yg_list
+    df["certainty_fake"] = 0.0
+
+    return df
 
 
 def create_datasets(df, splits):
@@ -118,7 +139,8 @@ def main(threshold=30, patch_size=32):
     clean_val_df.loc[:, "valid"] = True
     clean_test_df.loc[:, "valid"] = True
 
-    clean_train_df = augment_with_random_patches(clean_train_df, image_width, image_height)
+    # clean_train_df = augment_with_random_patches(clean_train_df, image_width, image_height)
+    clean_train_df = augment_with_random_patches_inline(clean_train_df, image_width, image_height)
     
     valid_count = clean_train_df["valid"].sum()  # Count of True values (valid rows)
     invalid_count = len(clean_train_df) - valid_count  # Count of False values (invalid rows)
@@ -126,7 +148,8 @@ def main(threshold=30, patch_size=32):
     print(f"Valid rows: {valid_count}")
     print(f"Invalid rows: {invalid_count}")
 
-    base_path = f"/home/stud/ath/ath_ws/datasets/match_april/{threshold}"
+    base_path = f"/home/stud/ath/ath_ws/datasets/match_april/{threshold}_inline"
+    # base_path = f"/home/stud/ath/ath_ws/datasets/match_april/{threshold}"
     
     if os.path.exists(base_path):
         shutil.rmtree(base_path) 
