@@ -107,7 +107,25 @@ def main(threshold=30, patch_size=32):
             "MOO11_short_3_backandforth",
         ]
     }
-
+    
+    splits = {
+        'train': [],
+        'val': [],
+        'test': [
+            'MGO01_low_light',
+            'MGO02_hand_puncher',
+            'MGO03_hand_shooter_easy',
+            'MGO04_hand_shooter_hard',
+            'MGO05_inspect_easy',
+            'MGO06_inspect_hard',
+            'MGO07_mapping_easy',
+            'MGO08_mapping_hard',
+            'MGO09_short_1_updown',
+            'MGO10_short_2_panorama',
+            'MGO11_short_3_backandforth',            
+        ]
+    }
+    
     training_df = pd.read_csv("/home/stud/ath/ath_ws/datasets/match_april/training.csv")
     high_error_kpids_df = pd.read_csv("/home/stud/ath/ath_ws/datasets/match_april/high_error_kpids.csv")
 
@@ -139,8 +157,9 @@ def main(threshold=30, patch_size=32):
     clean_val_df.loc[:, "valid"] = True
     clean_test_df.loc[:, "valid"] = True
 
-    # clean_train_df = augment_with_random_patches(clean_train_df, image_width, image_height)
-    clean_train_df = augment_with_random_patches_inline(clean_train_df, image_width, image_height)
+    clean_train_df = augment_with_random_patches(clean_train_df, image_width, image_height)
+    clean_val_df = augment_with_random_patches(clean_val_df, image_width, image_height)
+    # clean_train_df = augment_with_random_patches_inline(clean_train_df, image_width, image_height)
     
     valid_count = clean_train_df["valid"].sum()  # Count of True values (valid rows)
     invalid_count = len(clean_train_df) - valid_count  # Count of False values (invalid rows)
@@ -148,8 +167,8 @@ def main(threshold=30, patch_size=32):
     print(f"Valid rows: {valid_count}")
     print(f"Invalid rows: {invalid_count}")
 
-    base_path = f"/home/stud/ath/ath_ws/datasets/match_april/{threshold}_inline"
-    # base_path = f"/home/stud/ath/ath_ws/datasets/match_april/{threshold}"
+    # base_path = f"/home/stud/ath/ath_ws/datasets/match_april/{threshold}_inline"
+    base_path = f"/home/stud/ath/ath_ws/datasets/match_april/test/{threshold}"
     
     if os.path.exists(base_path):
         shutil.rmtree(base_path) 

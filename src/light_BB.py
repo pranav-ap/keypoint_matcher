@@ -370,8 +370,17 @@ class Light(pl.LightningModule):
         return metrics
 
     def _log_images(self, batch, target_coords, confidence_pred=None, limit_count=None, stage=None):
-        ref_patches, references, tar_patches, targets, estimates, confidences = batch
-                
+        ref_patches, references, tar_patches, targets, estimates, confidences, tar_patches_fake, targets_fake, estimates_fake = batch 
+        
+        references = torch.cat([references, references], dim=0)
+        ref_patches = torch.cat([ref_patches, ref_patches], dim=0)
+        tar_patches = torch.cat([tar_patches, tar_patches_fake], dim=0)
+        estimates = torch.cat([estimates, estimates_fake], dim=0)
+        targets = torch.cat([targets, targets_fake], dim=0)
+
+        second_half = torch.zeros_like(confidences, dtype=torch.float32)  
+        confidences = torch.cat([confidences, second_half], dim=0)
+        
         if limit_count is not None:
             mae_per_patch = torch.abs(target_coords - targets.squeeze(1)).mean(dim=1)
             worst_indices = torch.argsort(mae_per_patch, descending=True)[:limit_count]

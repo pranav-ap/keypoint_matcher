@@ -177,6 +177,7 @@ class Light(pl.LightningModule):
         self.conf_precision = torchmetrics.Precision(task="binary")
         self.conf_recall = torchmetrics.Recall(task="binary")
         self.conf_f1 = torchmetrics.F1Score(task="binary")
+        self.conf_matrix = torchmetrics.ConfusionMatrix(task="binary")
 
         self.save_hyperparameters({
             'learning_rate': self.learning_rate,
@@ -198,28 +199,15 @@ class Light(pl.LightningModule):
         return pred
 
     @staticmethod
-    def _compute_coords_accuracy_percentage(coords_pred, target, pixels=1.0, mask=None):
-        if mask is not None:
-            coords_pred = coords_pred[mask]
-            target = target[mask]
-            
-        if coords_pred.numel() == 0:
-            return 0.0
-        
+    def _compute_coords_accuracy_percentage(coords_pred, target, pixels=1.0):
         difference = torch.abs(coords_pred - target)
         exceeds = (difference > pixels).any(dim=1)
         percentage = (exceeds.sum().item() / coords_pred.shape[0]) * 100
-        return percentage
 
+        return percentage
     
     def _shared_step(self, batch, stage='train'):
         ref_patches, references, tar_patches, targets, estimates, confs_true = batch
-        # assert torch.isfinite(ref_patches).all(), "Invalid values in ref_patches"
-        # assert torch.isfinite(tar_patches).all(), "Invalid values in tar_patches"
-        # assert torch.isfinite(references).all(), "Invalid values in references"
-        # assert torch.isfinite(estimates).all(), "Invalid values in estimates"
-        # assert torch.isfinite(targets).all(), "Invalid values in targets"
-        # assert (confs_true >= 0).all() and (confs_true <= 1).all(), "Invalid values in confs_true"
 
         coords_delta_norm_pred, confs_pred = self.model(
             ref_patches,
@@ -227,14 +215,11 @@ class Light(pl.LightningModule):
             estimates,
         ) 
 
-        # assert torch.isfinite(confs_pred).any(), "NaN detected in confs_pred"
-        # assert torch.isfinite(coords_delta_norm_pred).any(), "NaN detected in coords_delta_norm_pred"
-
         coords_delta_pred = coords_delta_norm_pred.float() * ((config.image.patch_size - 1) / 2)
         coords_pred = estimates + coords_delta_pred  
         
-        confs_pred_binary = (confs_pred > 0.5).float()
-        confs_true_binary = confs_true.float() #.unsqueeze(1)
+        confs_pred_binary = (confs_pred > config.image.confidence_decision_threshold).float()
+        confs_true_binary = confs_true.float() 
         
         # Compute losses
         
@@ -242,20 +227,29 @@ class Light(pl.LightningModule):
         estimates_norm = Light._normalize_coords(estimates.float())
         coords_delta_norm_true = targets_norm - estimates_norm
 
-        # assert torch.isfinite(targets_norm).any(), "NaN detected in targets_norm"
-        # assert torch.isfinite(estimates_norm).any(), "NaN detected in estimates_norm"
-        # assert torch.isfinite(coords_delta_norm_true).any(), "NaN detected in coords_delta_norm_true"
+        coords_loss = F.l1_loss(coords_delta_norm_pred, coords_delta_norm_true)
+        
+        # confs_loss = F.binary_cross_entropy(confs_pred, confs_true_binary)
+        
+        pos_weight = 0.2  
+        neg_weight = 0.8  
+        weights = torch.where(confs_true_binary == 1, pos_weight, neg_weight)
+        confs_loss = F.binary_cross_entropy(confs_pred, confs_true_binary, weight=weights)
 
-        # coords_loss = F.l1_loss(coords_delta_norm_pred, coords_delta_norm_true)
-        coords_loss = F.l1_loss(coords_delta_norm_pred, coords_delta_norm_true, reduction='none')
-        coords_loss = (coords_loss.sum(dim=1) * confs_true).mean()
-
-        confs_loss = F.binary_cross_entropy(confs_pred, confs_true_binary) 
+        # alp=0.25  # alsph is weightage given to positive class 
+        # gamma=2.0
+        # eps=1e-8
+        
+        # confs_pred = confs_pred.clamp(min=eps, max=1.0 - eps)
+        # pt = confs_pred * confs_true_binary + (1 - confs_pred) * (1 - confs_true_binary)
+        # w = alp * confs_true_binary + (1 - alp) * (1 - confs_true_binary)
+        # confs_loss = -w * (1 - pt) ** gamma * pt.log()
 
         # Weighted loss
-        alpha = 0.05
+        
+        alpha = 0.05   
         alpha_confs_loss = alpha * confs_loss
-        loss = coords_loss + alpha_confs_loss
+        loss = coords_loss + alpha_confs_loss 
 
         # Calculate Coords metrics
 
@@ -268,27 +262,15 @@ class Light(pl.LightningModule):
 
         coords_mae = self.mae(coords_pred, targets)
 
-        true_mask = confs_true_binary.squeeze() == 1
-        coords_percent_3_pixel_true = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=3.0, mask=true_mask)
-        coords_percent_2_pixel_true = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=2.0, mask=true_mask)
-        coords_percent_15_pixel_true = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.5, mask=true_mask)
-        coords_percent_125_pixel_true = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.25, mask=true_mask)
-        coords_percent_1_pixel_true = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=1.0, mask=true_mask)
-        coords_percent_05_pixel_true = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=0.5, mask=true_mask)
-
-        coords_mae_true = None 
-        
-        if true_mask.any():
-            coords_mae_true = self.mae(coords_pred[true_mask], targets[true_mask])
-        else:
-            coords_mae_true = torch.tensor(0.0, device=coords_pred.device)
-
         # Calculate Confs metrics
 
-        conf_accuracy = self.conf_accuracy(confs_pred_binary, confs_true_binary)
-        conf_precision = self.conf_precision(confs_pred_binary, confs_true_binary)
-        conf_recall = self.conf_recall(confs_pred_binary, confs_true_binary)
-        conf_f1 = self.conf_f1(confs_pred_binary, confs_true_binary)
+        conf_accuracy = self.conf_accuracy(confs_pred, confs_true_binary)
+        conf_precision = self.conf_precision(confs_pred, confs_true_binary)
+        conf_recall = self.conf_recall(confs_pred, confs_true_binary)
+        conf_f1 = self.conf_f1(confs_pred, confs_true_binary)
+        
+        conf_matrix = self.conf_matrix(confs_pred, confs_true_binary)
+        tn, fp, fn, tp = conf_matrix.flatten()
 
         # Collect
 
@@ -300,6 +282,7 @@ class Light(pl.LightningModule):
             f"{stage}/coords_loss": coords_loss,
             f"{stage}/conf_loss": confs_loss, 
             f"{stage}/alpha_confs_loss": alpha_confs_loss, 
+            # f"{stage}/over_conf_penalty": over_conf_penalty,
 
             f"{stage}/coords_mae": coords_mae,
             f"{stage}/coords_percent_3_pixel": coords_percent_3_pixel,
@@ -309,18 +292,15 @@ class Light(pl.LightningModule):
             f"{stage}/coords_percent_1_pixel": coords_percent_1_pixel,
             f"{stage}/coords_percent_05_pixel": coords_percent_05_pixel,
             
-            f"{stage}/coords_mae_true": coords_mae_true,
-            f"{stage}/coords_percent_3_pixel_true": coords_percent_3_pixel_true,
-            f"{stage}/coords_percent_2_pixel_true": coords_percent_2_pixel_true,
-            f"{stage}/coords_percent_15_pixel_true": coords_percent_15_pixel_true,
-            f"{stage}/coords_percent_125_pixel_true": coords_percent_125_pixel_true,
-            f"{stage}/coords_percent_1_pixel_true": coords_percent_1_pixel_true,
-            f"{stage}/coords_percent_05_pixel_true": coords_percent_05_pixel_true,
-            
             f"{stage}/conf_accuracy": conf_accuracy,
             f"{stage}/conf_precision": conf_precision,
             f"{stage}/conf_recall": conf_recall,
             f"{stage}/conf_f1": conf_f1,
+            
+            f"{stage}/conf_tp": tp.float(),
+            f"{stage}/conf_fp": fp.float(),
+            f"{stage}/conf_fn": fn.float(),
+            f"{stage}/conf_tn": tn.float(),
         }
                         
         return metrics, coords_pred, confs_pred

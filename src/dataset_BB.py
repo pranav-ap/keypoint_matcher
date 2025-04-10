@@ -222,7 +222,6 @@ class MatchesDataset(torch.utils.data.Dataset):
             x1, y1,
             x_guess, y_guess, 
             certainty, 
-            valid, 
             x1_fake, y1_fake,
             x_guess_fake, y_guess_fake, 
             certainty_fake
@@ -237,8 +236,6 @@ class MatchesDataset(torch.utils.data.Dataset):
         guess_keypoint = (x_guess, y_guess)
         tar_keypoint_fake = (x1_fake, y1_fake)
         guess_keypoint_fake = (x_guess_fake, y_guess_fake)
-        
-        valid = bool(valid)
 
         left_name, right_name = pair_name.split("_")
                 

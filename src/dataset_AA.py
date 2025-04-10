@@ -241,7 +241,7 @@ class MatchesDataset(torch.utils.data.Dataset):
             certainty = np.float64(0.0)
         else:
             certainty = np.float64(1.0)
-                     
+
         ref_patch, reference = prepare_jitter_reference_patch(
             ref_image, ref_keypoint,
             patch_size=config.image.patch_size,
@@ -340,10 +340,10 @@ class MatchesDataModule(L.LightningDataModule):
             df = pd.read_csv(config.paths.csv.train)
             df = df[df["certainty"] > config.image.patch_min_confidence]
 
-            valid_df = df[df["valid"] == True]
-            invalid_df = df[df["valid"] == False]
-            invalid_df = invalid_df.sample(frac=0.25, random_state=42)
-            df = pd.concat([valid_df, invalid_df], ignore_index=True)
+            # valid_df = df[df["valid"] == True]
+            # invalid_df = df[df["valid"] == False]
+            # invalid_df = invalid_df.sample(frac=0.2, random_state=42)
+            # df = pd.concat([valid_df, invalid_df], ignore_index=True)
             
             df = df.sample(frac=1).reset_index(drop=True)
             
