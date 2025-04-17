@@ -10,7 +10,7 @@ from utils import logger
 
 class Reader:
     def __init__(self, cam: int, DATASET: str):
-        DATASET_PATH = f"D:/thesis_code/datasets/output/output_all/basalt/monado_slam/{DATASET}"
+        DATASET_PATH = f"/home/stud/ath/ath_ws/keypoint_dataset_pipeline/output/output_all/basalt/monado_slam/{DATASET}"
         filename = "data.hdf5"  # do not change
         filepath = f"{DATASET_PATH}/{filename}"
         self._file = h5py.File(filepath, "r")
@@ -121,8 +121,10 @@ def process_cam(cam: int, training_df: pd.DataFrame, DATASET: str):
 
         left_name = pair_name.split("_")[0]
 
-        file_path = f"D:/thesis_code/track_debug/{DATASET}/cam{cam}/{left_name}_incoming_missed_kps.csv"
-        assert os.path.exists(file_path), f"File {file_path} does not exist!"
+        file_path = f"/home/stud/ath/ath_ws/datasets/track_debug_3_lifetimes_v2/{DATASET}/cam{cam}/{left_name}_incoming_missed_kps.csv"
+        if not os.path.exists(file_path):
+            print(f"File {file_path} does not exist!")
+            continue 
 
         df = pd.read_csv(
             file_path,
@@ -150,17 +152,29 @@ def process_cam(cam: int, training_df: pd.DataFrame, DATASET: str):
 
 def main():
     DATASETS = [
-        "MOO01_hand_puncher_1",
-        "MOO02_hand_puncher_2",
-        "MOO03_hand_shooter_easy",
-        "MOO04_hand_shooter_hard",
-        "MOO05_inspect_easy",
-        "MOO06_inspect_hard",
-        "MOO07_mapping_easy",
-        "MOO08_mapping_hard",
-        "MOO09_short_1_updown",
-        "MOO10_short_2_panorama",
-        "MOO11_short_3_backandforth",
+        # "MOO01_hand_puncher_1",
+        # "MOO02_hand_puncher_2",
+        # "MOO03_hand_shooter_easy",
+        # "MOO04_hand_shooter_hard",
+        # "MOO05_inspect_easy",
+        # "MOO06_inspect_hard",
+        # "MOO07_mapping_easy",
+        # "MOO08_mapping_hard",
+        # "MOO09_short_1_updown",
+        # "MOO10_short_2_panorama",
+        # "MOO11_short_3_backandforth",
+        
+        "MGO11_short_3_backandforth",
+        "MGO01_low_light",
+        "MGO02_hand_puncher",
+        "MGO03_hand_shooter_easy",
+        "MGO04_hand_shooter_hard",
+        "MGO05_inspect_easy",
+        "MGO06_inspect_hard",
+        "MGO07_mapping_easy",
+        "MGO08_mapping_hard",
+        "MGO09_short_1_updown",
+        "MGO10_short_2_panorama",
     ]
 
     training_df = pd.DataFrame(columns=[
@@ -181,7 +195,7 @@ def main():
             print(f"=> cam{cam}")
             process_cam(cam, training_df, DATASET)
 
-    training_df.to_csv(f"data/training.csv", index=False)
+    training_df.to_csv(f"/home/stud/ath/ath_ws/datasets/match_april/training_mg.csv", index=False)
 
 
 if __name__ == "__main__":

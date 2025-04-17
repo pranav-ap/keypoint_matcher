@@ -21,6 +21,36 @@ from .positional_encoding import RoPENd
 torch.set_float32_matmul_precision('medium')
 
 
+class PreActDSBasicBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1):
+        super().__init__()
+
+        self.bn1 = nn.BatchNorm2d(in_channels)
+        self.depthwise1 = nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=stride, padding=1, groups=in_channels, bias=False)
+        self.pointwise1 = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
+
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.depthwise2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, groups=out_channels, bias=False)
+        self.pointwise2 = nn.Conv2d(out_channels, out_channels, kernel_size=1, bias=False)
+
+        self.shortcut = None
+        if in_channels != out_channels or stride != 1:
+            self.shortcut = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False)
+
+    def forward(self, x):
+        out = F.relu(self.bn1(x))
+        shortcut = self.shortcut(out) if self.shortcut else x
+
+        out = self.depthwise1(out)
+        out = self.pointwise1(out)
+        out = F.relu(self.bn2(out))
+        out = self.depthwise2(out)
+        out = self.pointwise2(out)
+
+        out += shortcut
+        return out
+
+
 class PreActBasicBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super().__init__()
@@ -103,17 +133,17 @@ class MatcherModel(nn.Module):
 
         ref_patches = self.patch_embedding(ref_patches)
         # (b, c, h, w) -> (b, h, w, c)
-        ref_patches = ref_patches.permute(0, 2, 3, 1).contiguous()
-        ref_patches = self.positional_encoding(ref_patches)
-        # (b, h, w, c) -> (b, c, h, w)
-        ref_patches = ref_patches.permute(0, 3, 1, 2).contiguous()
+        # ref_patches = ref_patches.permute(0, 2, 3, 1).contiguous()
+        # ref_patches = self.positional_encoding(ref_patches)
+        # # (b, h, w, c) -> (b, c, h, w)
+        # ref_patches = ref_patches.permute(0, 3, 1, 2).contiguous()
 
         tar_patches = self.patch_embedding(tar_patches)
         # (b, c, h, w) -> (b, h, w, c)
-        tar_patches = tar_patches.permute(0, 2, 3, 1).contiguous()
-        tar_patches = self.positional_encoding(tar_patches)
-        # (b, h, w, c) -> (b, c, h, w)
-        tar_patches = tar_patches.permute(0, 3, 1, 2).contiguous()
+        # tar_patches = tar_patches.permute(0, 2, 3, 1).contiguous()
+        # tar_patches = self.positional_encoding(tar_patches)
+        # # (b, h, w, c) -> (b, c, h, w)
+        # tar_patches = tar_patches.permute(0, 3, 1, 2).contiguous()
 
         """
         PreActBasicBlock ResNet 
@@ -228,29 +258,22 @@ class Light(pl.LightningModule):
         coords_delta_norm_true = targets_norm - estimates_norm
 
         coords_loss = F.l1_loss(coords_delta_norm_pred, coords_delta_norm_true)
-        
-        # confs_loss = F.binary_cross_entropy(confs_pred, confs_true_binary)
-        
-        pos_weight = 0.2  
-        neg_weight = 0.8  
-        weights = torch.where(confs_true_binary == 1, pos_weight, neg_weight)
-        confs_loss = F.binary_cross_entropy(confs_pred, confs_true_binary, weight=weights)
-
-        # alp=0.25  # alsph is weightage given to positive class 
-        # gamma=2.0
-        # eps=1e-8
-        
-        # confs_pred = confs_pred.clamp(min=eps, max=1.0 - eps)
-        # pt = confs_pred * confs_true_binary + (1 - confs_pred) * (1 - confs_true_binary)
-        # w = alp * confs_true_binary + (1 - alp) * (1 - confs_true_binary)
-        # confs_loss = -w * (1 - pt) ** gamma * pt.log()
-
+        confs_loss = F.binary_cross_entropy(confs_pred, confs_true_binary)
+       
         # Weighted loss
         
         alpha = 0.05   
-        alpha_confs_loss = alpha * confs_loss
-        loss = coords_loss + alpha_confs_loss 
 
+        # alpha = coords_loss.item() / (confs_loss.item() + 1e-8)
+
+        # alpha_coords_loss = 10 * coords_loss
+        # alpha_confs_loss = confs_loss
+        
+        alpha_coords_loss = coords_loss
+        alpha_confs_loss = alpha * confs_loss
+        
+        loss = alpha_coords_loss + alpha_confs_loss 
+        
         # Calculate Coords metrics
 
         coords_percent_3_pixel = self._compute_coords_accuracy_percentage(coords_pred, targets, pixels=3.0)
@@ -264,13 +287,18 @@ class Light(pl.LightningModule):
 
         # Calculate Confs metrics
 
-        conf_accuracy = self.conf_accuracy(confs_pred, confs_true_binary)
-        conf_precision = self.conf_precision(confs_pred, confs_true_binary)
-        conf_recall = self.conf_recall(confs_pred, confs_true_binary)
-        conf_f1 = self.conf_f1(confs_pred, confs_true_binary)
-        
+        conf_accuracy = self.conf_accuracy(confs_pred_binary, confs_true_binary)
+
         conf_matrix = self.conf_matrix(confs_pred, confs_true_binary)
         tn, fp, fn, tp = conf_matrix.flatten()
+        
+        precision_0 = tn / (tn + fn + 1e-8)
+        recall_0 = tn / (tn + fp + 1e-8)
+        f1_0 = 2 * precision_0 * recall_0 / (precision_0 + recall_0 + 1e-8)
+        
+        precision_1 = tp / (tp + fp + 1e-8)
+        recall_1 = tp / (tp + fn + 1e-8)
+        f1_1 = 2 * precision_1 * recall_1 / (precision_1 + recall_1 + 1e-8)
 
         # Collect
 
@@ -281,8 +309,8 @@ class Light(pl.LightningModule):
             f"{stage}/loss": loss,
             f"{stage}/coords_loss": coords_loss,
             f"{stage}/conf_loss": confs_loss, 
+            f"{stage}/alpha_coords_loss": alpha_coords_loss, 
             f"{stage}/alpha_confs_loss": alpha_confs_loss, 
-            # f"{stage}/over_conf_penalty": over_conf_penalty,
 
             f"{stage}/coords_mae": coords_mae,
             f"{stage}/coords_percent_3_pixel": coords_percent_3_pixel,
@@ -293,16 +321,20 @@ class Light(pl.LightningModule):
             f"{stage}/coords_percent_05_pixel": coords_percent_05_pixel,
             
             f"{stage}/conf_accuracy": conf_accuracy,
-            f"{stage}/conf_precision": conf_precision,
-            f"{stage}/conf_recall": conf_recall,
-            f"{stage}/conf_f1": conf_f1,
-            
+
+            f"{stage}/conf_precision_0": precision_0.float(),
+            f"{stage}/conf_recall_0": recall_0.float(),
+            f"{stage}/conf_f1_0": f1_0.float(),
+            f"{stage}/conf_precision_1": precision_1.float(),
+            f"{stage}/conf_recall_1": recall_1.float(),
+            f"{stage}/conf_f1_1": f1_1.float(),
+
             f"{stage}/conf_tp": tp.float(),
             f"{stage}/conf_fp": fp.float(),
             f"{stage}/conf_fn": fn.float(),
             f"{stage}/conf_tn": tn.float(),
         }
-                        
+
         return metrics, coords_pred, confs_pred
 
     def training_step(self, batch, batch_idx):

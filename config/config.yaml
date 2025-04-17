@@ -2,16 +2,16 @@ log_level: WARNING  # TRACE WARNING
 
 experiment:
 
-    model: conan # barto arjan  benny bishop  alan  jon  
+    model: arjan # texas herz plod conan barto arjan  benny bishop  alan  jon  
     linux: 50
 
-    # model: smith # holland andor crew  tesla  akila  junior  
+    # model: rahul # ryan2 dome ohio ellie cheese  swift victor smith holland andor crew  tesla  akila  junior  
     # linux: 53
 
-    # model: ryan # jen rajiv  eddie tom  harris  sam  abby  frank
+    # model: senator # border florida jokes noddy disney ryan jen rajiv  eddie tom  harris  sam  abby  frank
     # linux: 57 
 
-    # model: shower  # steve  vader  potter  pulse  peyton 
+    # model: timothy # gabby alaska  varga shower  steve  vader  potter  pulse  peyton 
     # linux: 75 
 
     params: 10mil
@@ -25,15 +25,19 @@ image:
     # [width, height]
     original_image_shape: [640, 480]  # [640, 480]
     crop_image_shape: [ 630, 476 ] # [504, 504] [630, 476]
-    patch_size: 32 # 36 
-    patch_size_folder: 26 # 32 
+    patch_size: 32 # 16  32 
+    patch_size_folder: 26 # 10  26 
     patch_padding: 2
+    
     jitter_reference: False
-    jitter_target: True
-    max_perturb: 5
+    jitter_target: True 
+
+    max_perturb: 5 # 5 
+    guess_max_perturb: 0 # 0 8
+
     patch_min_confidence: -1
     bad_patch_min_confidence: 0.3 # 0.2 0.3
-    confidence_decision_threshold: 0.75
+    confidence_decision_threshold: 0.5 # 0.75 
 
 
 train:
@@ -44,8 +48,8 @@ train:
     fast_dev_run: False  # True False
     overfit_batches: 0
 
-    patience: 10
-    max_epochs: 300
+    patience: 5
+    max_epochs: 100
     check_val_every_n_epoch: 2
     num_sanity_val_steps: 1
     log_every_n_steps: 25 
@@ -78,8 +82,9 @@ paths:
     images: ${paths.roots.mav}/${task.cam}/data
 
     csv:
+        # train: ${paths.roots.ws}/datasets/match_april/more/${image.patch_size_folder}/train.csv
+        # val: ${paths.roots.ws}/datasets/match_april/more/${image.patch_size_folder}/val.csv
+        # test: ${paths.roots.ws}/datasets/match_april/more/${image.patch_size_folder}/test.csv
         train: ${paths.roots.ws}/datasets/match_april/${image.patch_size_folder}/train.csv
         val: ${paths.roots.ws}/datasets/match_april/${image.patch_size_folder}/val.csv
         test: ${paths.roots.ws}/datasets/match_april/${image.patch_size_folder}/test.csv
-
-

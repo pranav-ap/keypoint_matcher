@@ -220,7 +220,7 @@ class MatchesDataset(torch.utils.data.Dataset):
             valid,
         ] = row
 
-        round_digits = 2
+        round_digits = 6
         x0, y0, x1, y1, x_guess, y_guess = round(x0, round_digits), round(y0, round_digits), round(x1, round_digits), round(y1, round_digits), round(x_guess, round_digits), round(y_guess, round_digits)
         assert all(not pd.isna(v) for v in [x0, y0, x1, y1, x_guess, y_guess]), f"NaN incoming!"
         
@@ -270,7 +270,18 @@ class MatchesDataset(torch.utils.data.Dataset):
 
             tar_patch = self.patch_normalize(tar_patch)
             # tar_patch = min_max_normalize(tar_patch, min_val=0.0, max_val=1.0)
-        
+
+        if self.stage == "train" and config.image.guess_max_perturb > 0:
+            perturb_range = config.image.guess_max_perturb 
+            gx, gy = guess
+            gx_perturbed = gx + random.uniform(-perturb_range, perturb_range)
+            gy_perturbed = gy + random.uniform(-perturb_range, perturb_range)
+            
+            if 0 <= gx_perturbed < config.image.patch_size and 0 <= gy_perturbed < config.image.patch_size:
+                guess = (gx_perturbed, gy_perturbed)
+            else:
+                guess = (gx, gy)
+
         assert 0 <= reference[0] < config.image.patch_size, f"Reference X-coordinate out of bounds: {reference[0]} (Expected between 0 and {config.image.patch_size})"
         assert 0 <= reference[1] < config.image.patch_size, f"Reference Y-coordinate out of bounds: {reference[1]} (Expected between 0 and {config.image.patch_size})"
         assert 0 <= target[0] < config.image.patch_size, f"Target X-coordinate out of bounds: {target[0]} (Expected between 0 and {config.image.patch_size})"
@@ -337,14 +348,12 @@ class MatchesDataModule(L.LightningDataModule):
 
     def setup(self, stage=None):
         if stage == "fit":
+            """
+            Train
+            """
+            
             df = pd.read_csv(config.paths.csv.train)
             df = df[df["certainty"] > config.image.patch_min_confidence]
-
-            # valid_df = df[df["valid"] == True]
-            # invalid_df = df[df["valid"] == False]
-            # invalid_df = invalid_df.sample(frac=0.2, random_state=42)
-            # df = pd.concat([valid_df, invalid_df], ignore_index=True)
-            
             df = df.sample(frac=1).reset_index(drop=True)
             
             excess = len(df) % config.train.batch_size
@@ -359,9 +368,14 @@ class MatchesDataModule(L.LightningDataModule):
                 patch_normalize=self.patch_normalize,
                 # image_augmentation_no_kp=self.image_augmentation_no_kp,
             )
+            
+            """
+            Validation
+            """
 
             df = pd.read_csv(config.paths.csv.val)
             df = df[df["certainty"] > config.image.patch_min_confidence]
+            # df = df[df["valid"] == True]
             df = df.sample(frac=1).reset_index(drop=True)
             
             excess = len(df) % config.train.batch_size
@@ -381,8 +395,6 @@ class MatchesDataModule(L.LightningDataModule):
 
         if stage == "test":
             df = pd.read_csv(config.paths.csv.test)
-            df = df[df["certainty"] > config.image.patch_min_confidence]
-            df = df.sample(frac=1).reset_index(drop=True)
             
             excess = len(df) % config.train.batch_size
             if excess:

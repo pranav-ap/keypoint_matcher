@@ -26,7 +26,7 @@ def generate_random_keypoint(image_width, image_height, patch_margin):
 def augment_with_random_patches(df, image_width=640, image_height=480):
     new_rows = []
     for _, row in df.iterrows():
-        x1, y1 = generate_random_keypoint(image_width, image_height, patch_margin=52)
+        x1, y1 = generate_random_keypoint(image_width, image_height, patch_margin=72) # 52
         x_guess, y_guess = x1, y1
         # x_guess = x1 + random.randint(-2, 2)
         # y_guess = y1 + random.randint(-2, 2)
@@ -88,6 +88,26 @@ def print_dataset_stats(clean_train_df, clean_val_df, clean_test_df):
 
 
 def main(threshold=30, patch_size=32):
+    # splits = {
+    #     'train': [
+    #         "MOO01_hand_puncher_1",
+    #         "MOO02_hand_puncher_2",
+    #         "MOO03_hand_shooter_easy",
+    #         "MOO04_hand_shooter_hard",
+    #         "MOO05_inspect_easy",
+    #     ],
+    #     'val': [
+    #         "MOO06_inspect_hard",
+    #         "MOO07_mapping_easy",
+    #         "MOO08_mapping_hard",
+    #         "MOO09_short_1_updown",
+    #         "MOO10_short_2_panorama",
+    #     ],
+    #     'test': [
+    #         "MOO11_short_3_backandforth",
+    #     ]
+    # }
+    
     splits = {
         'train': [
             "MOO01_hand_puncher_1",
@@ -95,38 +115,54 @@ def main(threshold=30, patch_size=32):
             "MOO03_hand_shooter_easy",
             "MOO04_hand_shooter_hard",
             "MOO05_inspect_easy",
-        ],
-        'val': [
-            "MOO06_inspect_hard",
+            "MOO06_inspect_hard",            
             "MOO07_mapping_easy",
             "MOO08_mapping_hard",
+            
+            'MGO02_hand_puncher',
+            'MGO04_hand_shooter_hard',
+            'MGO06_inspect_hard',            
+        ],
+        'val': [
             "MOO09_short_1_updown",
             "MOO10_short_2_panorama",
+            "MOO11_short_3_backandforth",
+            
+            'MGO01_low_light',
+            'MGO05_inspect_easy',
+            'MGO09_short_1_updown',
+            'MGO10_short_2_panorama',
+            'MGO11_short_3_backandforth',
         ],
         'test': [
-            "MOO11_short_3_backandforth",
-        ]
-    }
-    
-    splits = {
-        'train': [],
-        'val': [],
-        'test': [
-            'MGO01_low_light',
             'MGO02_hand_puncher',
             'MGO03_hand_shooter_easy',
             'MGO04_hand_shooter_hard',
-            'MGO05_inspect_easy',
-            'MGO06_inspect_hard',
             'MGO07_mapping_easy',
-            'MGO08_mapping_hard',
-            'MGO09_short_1_updown',
-            'MGO10_short_2_panorama',
-            'MGO11_short_3_backandforth',            
+            'MGO08_mapping_hard',      
         ]
     }
+        
+    # training_df = pd.read_csv("/home/stud/ath/ath_ws/datasets/match_april/training.csv")
     
-    training_df = pd.read_csv("/home/stud/ath/ath_ws/datasets/match_april/training.csv")
+    training_df = pd.read_csv(
+        "/home/stud/ath/ath_ws/datasets/match_april/training.csv",
+        header=0,
+        names=(
+            "dataset", "cam", "kpid", "pair_name", "x0", "y0", "x1", "y1", "x_guess", "y_guess", "certainty",
+        )
+    )
+    
+    training_mg_df = pd.read_csv(
+        "/home/stud/ath/ath_ws/datasets/match_april/training_mg.csv",
+        header=0,
+        names=(
+            "dataset", "cam", "kpid", "pair_name", "x0", "y0", "x1", "y1", "x_guess", "y_guess", "certainty",
+        )
+    )
+    
+    training_df = pd.concat([training_df, training_mg_df], ignore_index=True)
+    
     high_error_kpids_df = pd.read_csv("/home/stud/ath/ath_ws/datasets/match_april/high_error_kpids.csv")
 
     print(f'{len(training_df)=}')
@@ -152,6 +188,9 @@ def main(threshold=30, patch_size=32):
     print(f'{len(centered_df)=}')
 
     clean_train_df, clean_val_df, clean_test_df = create_datasets(centered_df, splits)
+    clean_train_df = clean_train_df.copy()
+    clean_val_df = clean_val_df.copy()
+    clean_test_df = clean_test_df.copy()
 
     clean_train_df.loc[:, "valid"] = True
     clean_val_df.loc[:, "valid"] = True
@@ -168,7 +207,8 @@ def main(threshold=30, patch_size=32):
     print(f"Invalid rows: {invalid_count}")
 
     # base_path = f"/home/stud/ath/ath_ws/datasets/match_april/{threshold}_inline"
-    base_path = f"/home/stud/ath/ath_ws/datasets/match_april/test/{threshold}"
+    base_path = f"/home/stud/ath/ath_ws/datasets/match_april/more/{threshold}"
+    # base_path = f"/home/stud/ath/ath_ws/datasets/match_april/{threshold}"
     
     if os.path.exists(base_path):
         shutil.rmtree(base_path) 
@@ -182,7 +222,6 @@ def main(threshold=30, patch_size=32):
     print_dataset_stats(clean_train_df, clean_val_df, clean_test_df)
 
     print("Done!")
-
 
 
 if __name__ == "__main__":
