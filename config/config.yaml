@@ -2,18 +2,8 @@ log_level: WARNING  # TRACE WARNING
 
 
 experiment:
-
-    # model: harry # chase potter 
-    # linux: 50
-
-    model: rose # grass elephant opera cameron ghost_6 ghost andor 
-    linux: 53
-
-    # model: lotus # stage  star  bird clinic city house ghost_4 ghost_3 pulse 
-    # linux: 57 
-
-    # model: cudy # ghost_5 ghost_2 rahul_2 
-    # linux: 75 
+    model: lotus 
+    linux: 57 
 
     params: 2mil
     heads: 2 
@@ -83,9 +73,6 @@ paths:
     images: ${paths.roots.mav}/${task.cam}/data
 
     csv:
-        # train: ${paths.roots.ws}/datasets/match_april/more/${image.patch_size_folder}/train.csv
-        # val: ${paths.roots.ws}/datasets/match_april/more/${image.patch_size_folder}/val.csv
-        # test: ${paths.roots.ws}/datasets/match_april/more/${image.patch_size_folder}/test.csv
         train: ${paths.roots.ws}/datasets/match_april/${image.patch_size_folder}/train.csv
         val: ${paths.roots.ws}/datasets/match_april/${image.patch_size_folder}/val.csv
         test: ${paths.roots.ws}/datasets/match_april/${image.patch_size_folder}/test.csv
