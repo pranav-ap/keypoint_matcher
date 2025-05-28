@@ -1,20 +1,21 @@
 log_level: WARNING  # TRACE WARNING
 
+
 experiment:
 
-    model: arjan # texas herz plod conan barto arjan  benny bishop  alan  jon  
-    linux: 50
+    # model: harry # chase potter 
+    # linux: 50
 
-    # model: rahul # ryan2 dome ohio ellie cheese  swift victor smith holland andor crew  tesla  akila  junior  
-    # linux: 53
+    model: rose # grass elephant opera cameron ghost_6 ghost andor 
+    linux: 53
 
-    # model: senator # border florida jokes noddy disney ryan jen rajiv  eddie tom  harris  sam  abby  frank
+    # model: lotus # stage  star  bird clinic city house ghost_4 ghost_3 pulse 
     # linux: 57 
 
-    # model: timothy # gabby alaska  varga shower  steve  vader  potter  pulse  peyton 
+    # model: cudy # ghost_5 ghost_2 rahul_2 
     # linux: 75 
 
-    params: 10mil
+    params: 2mil
     heads: 2 
     name: ${experiment.model}_${experiment.linux}_linux
 
@@ -25,15 +26,15 @@ image:
     # [width, height]
     original_image_shape: [640, 480]  # [640, 480]
     crop_image_shape: [ 630, 476 ] # [504, 504] [630, 476]
-    patch_size: 32 # 16  32 
-    patch_size_folder: 26 # 10  26 
+    patch_size: 32 # 16  32  64
+    patch_size_folder: 26 # 10  26  56
     patch_padding: 2
     
     jitter_reference: False
     jitter_target: True 
 
     max_perturb: 5 # 5 
-    guess_max_perturb: 0 # 0 8
+    guess_max_perturb: 0 # 0 4
 
     patch_min_confidence: -1
     bad_patch_min_confidence: 0.3 # 0.2 0.3
@@ -49,7 +50,7 @@ train:
     overfit_batches: 0
 
     patience: 5
-    max_epochs: 100
+    max_epochs: 320
     check_val_every_n_epoch: 2
     num_sanity_val_steps: 1
     log_every_n_steps: 25 
@@ -62,7 +63,7 @@ test:
 
 
 loggers: # []
-   - neptune
+  - neptune
 
 
 paths:

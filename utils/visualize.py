@@ -82,7 +82,7 @@ def show_batch(
         rotations = rotations * (180 / torch.pi) 
 
     try:
-        fs = 5 if config.image.patch_size_folder == 10 else 12
+        fs = 2 if config.image.patch_size_folder == 10 else 12
         font = ImageFont.truetype("arial.ttf", fs)
     except IOError:
         font = ImageFont.load_default() 

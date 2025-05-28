@@ -152,29 +152,33 @@ def process_cam(cam: int, training_df: pd.DataFrame, DATASET: str):
 
 def main():
     DATASETS = [
-        # "MOO01_hand_puncher_1",
-        # "MOO02_hand_puncher_2",
-        # "MOO03_hand_shooter_easy",
-        # "MOO04_hand_shooter_hard",
-        # "MOO05_inspect_easy",
-        # "MOO06_inspect_hard",
-        # "MOO07_mapping_easy",
-        # "MOO08_mapping_hard",
-        # "MOO09_short_1_updown",
-        # "MOO10_short_2_panorama",
-        # "MOO11_short_3_backandforth",
+        "MOO01_hand_puncher_1",
+        "MOO02_hand_puncher_2",
+        "MOO03_hand_shooter_easy",
+        "MOO04_hand_shooter_hard",
+        "MOO05_inspect_easy",
+        "MOO06_inspect_hard",
+        "MOO07_mapping_easy",
+        "MOO08_mapping_hard",
+        "MOO09_short_1_updown",
+        "MOO10_short_2_panorama",
+        "MOO11_short_3_backandforth",
         
-        "MGO11_short_3_backandforth",
-        "MGO01_low_light",
-        "MGO02_hand_puncher",
-        "MGO03_hand_shooter_easy",
-        "MGO04_hand_shooter_hard",
-        "MGO05_inspect_easy",
-        "MGO06_inspect_hard",
-        "MGO07_mapping_easy",
-        "MGO08_mapping_hard",
-        "MGO09_short_1_updown",
-        "MGO10_short_2_panorama",
+        "MOO12_freemovement_long_session",
+        
+        # "MGO11_short_3_backandforth",
+        # "MGO01_low_light",
+        # "MGO02_hand_puncher",
+        # "MGO03_hand_shooter_easy",
+        # "MGO04_hand_shooter_hard",
+        # "MGO05_inspect_easy",
+        # "MGO06_inspect_hard",
+        # "MGO07_mapping_easy",
+        # "MGO08_mapping_hard",
+        # "MGO09_short_1_updown",
+        # "MGO10_short_2_panorama",
+        
+        # "MGO12_freemovement_long_session",
     ]
 
     training_df = pd.DataFrame(columns=[
@@ -195,7 +199,7 @@ def main():
             print(f"=> cam{cam}")
             process_cam(cam, training_df, DATASET)
 
-    training_df.to_csv(f"/home/stud/ath/ath_ws/datasets/match_april/training_mg.csv", index=False)
+    training_df.to_csv(f"/home/stud/ath/ath_ws/datasets/match_april/training_may_mo_mg.csv", index=False)
 
 
 if __name__ == "__main__":

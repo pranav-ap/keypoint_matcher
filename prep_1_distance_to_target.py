@@ -119,22 +119,22 @@ def plot_dataset_error_counts(dataset_counts):
 
 def main(threshold):
     training_df = pd.read_csv(
-        "/home/stud/ath/ath_ws/datasets/match_april/training.csv",
+        "/home/stud/ath/ath_ws/datasets/match_april/training_may_mo_mg.csv",
         header=0,
         names=(
             "dataset", "cam", "kpid", "pair_name", "x0", "y0", "x1", "y1", "x_guess", "y_guess", "certainty",
         )
     )
     
-    training_mg_df = pd.read_csv(
-        "/home/stud/ath/ath_ws/datasets/match_april/training_mg.csv",
-        header=0,
-        names=(
-            "dataset", "cam", "kpid", "pair_name", "x0", "y0", "x1", "y1", "x_guess", "y_guess", "certainty",
-        )
-    )
+    # training_mg_df = pd.read_csv(
+    #     "/home/stud/ath/ath_ws/datasets/match_april/training_may_mo_mg.csv",
+    #     header=0,
+    #     names=(
+    #         "dataset", "cam", "kpid", "pair_name", "x0", "y0", "x1", "y1", "x_guess", "y_guess", "certainty",
+    #     )
+    # )
     
-    training_df = pd.concat([training_df, training_mg_df], ignore_index=True)
+    # training_df = pd.concat([training_df, training_mg_df], ignore_index=True)
     
     target_errors = calculate_target_error(training_df)
     reference_errors = calculate_reference_error(training_df)

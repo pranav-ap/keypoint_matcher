@@ -220,7 +220,7 @@ class MatchesDataset(torch.utils.data.Dataset):
             valid,
         ] = row
 
-        round_digits = 6
+        round_digits = 8
         x0, y0, x1, y1, x_guess, y_guess = round(x0, round_digits), round(y0, round_digits), round(x1, round_digits), round(y1, round_digits), round(x_guess, round_digits), round(y_guess, round_digits)
         assert all(not pd.isna(v) for v in [x0, y0, x1, y1, x_guess, y_guess]), f"NaN incoming!"
         
@@ -395,6 +395,23 @@ class MatchesDataModule(L.LightningDataModule):
 
         if stage == "test":
             df = pd.read_csv(config.paths.csv.test)
+            
+            selected_datasets = [
+                'MGO01_low_light',
+                'MGO02_hand_puncher',
+                'MGO03_hand_shooter_easy',
+                'MGO04_hand_shooter_hard',
+                'MGO05_inspect_easy',
+                'MGO06_inspect_hard',   
+                'MGO07_mapping_easy',
+                'MGO08_mapping_hard',      
+                'MGO09_short_1_updown',
+                'MGO10_short_2_panorama',
+                'MGO11_short_3_backandforth',
+                "MOO11_short_3_backandforth",
+            ]
+            
+            df = df[df["dataset"].isin(selected_datasets)]
             
             excess = len(df) % config.train.batch_size
             if excess:

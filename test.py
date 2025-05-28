@@ -3,7 +3,7 @@ import torch
 
 from config import config
 from src import Light, MatchesDataModule
-from utils import logger, make_clear_directory, MyLogger
+from utils import logger, MyLogger
 
 torch.set_float32_matmul_precision('medium')
 
@@ -22,7 +22,8 @@ def test():
 
     dm = MatchesDataModule()
 
-    checkpoint_path = '/home/stud/ath/ath_ws/keypoint_matcher/output/finalnet_resnet_52_linux_20mil_2_heads/checkpoints/best_checkpoint copy.ckpt'
+    model_folder_name = 'grass_53_linux'
+    checkpoint_path = f'/home/stud/ath/ath_ws/keypoint_matcher/output/{model_folder_name}/checkpoints/best_checkpoint.ckpt'
     light = Light.load_from_checkpoint(
         checkpoint_path,
         neptune_logger=neptune_logger,

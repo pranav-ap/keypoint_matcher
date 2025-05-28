@@ -88,25 +88,42 @@ def print_dataset_stats(clean_train_df, clean_val_df, clean_test_df):
 
 
 def main(threshold=30, patch_size=32):
-    # splits = {
-    #     'train': [
-    #         "MOO01_hand_puncher_1",
-    #         "MOO02_hand_puncher_2",
-    #         "MOO03_hand_shooter_easy",
-    #         "MOO04_hand_shooter_hard",
-    #         "MOO05_inspect_easy",
-    #     ],
-    #     'val': [
-    #         "MOO06_inspect_hard",
-    #         "MOO07_mapping_easy",
-    #         "MOO08_mapping_hard",
-    #         "MOO09_short_1_updown",
-    #         "MOO10_short_2_panorama",
-    #     ],
-    #     'test': [
-    #         "MOO11_short_3_backandforth",
-    #     ]
-    # }
+    splits = {
+        'train': [
+            "MOO12_freemovement_long_session",
+        ],
+        'val': [
+            "MOO01_hand_puncher_1",
+            "MOO03_hand_shooter_easy",
+            "MOO04_hand_shooter_hard",
+            "MOO05_inspect_easy",
+            "MOO06_inspect_hard",
+            
+            # "MOO09_short_1_updown",
+            # "MOO10_short_2_panorama",
+        ],
+        'test': [
+            "MOO02_hand_puncher_2",
+            "MOO07_mapping_easy",
+            "MOO08_mapping_hard",
+            
+            # 'MGO01_low_light',
+            # 'MGO02_hand_puncher',
+            # 'MGO03_hand_shooter_easy',
+            # 'MGO04_hand_shooter_hard',
+            # 'MGO05_inspect_easy',
+            # 'MGO06_inspect_hard',   
+            # 'MGO07_mapping_easy',
+            # 'MGO08_mapping_hard',      
+            # 'MGO09_short_1_updown',
+            # 'MGO10_short_2_panorama',
+            # 'MGO11_short_3_backandforth',
+            
+            # "MOO11_short_3_backandforth",
+        ]
+    }
+    
+    """
     
     splits = {
         'train': [
@@ -143,25 +160,27 @@ def main(threshold=30, patch_size=32):
         ]
     }
         
+    """
+    
     # training_df = pd.read_csv("/home/stud/ath/ath_ws/datasets/match_april/training.csv")
     
     training_df = pd.read_csv(
-        "/home/stud/ath/ath_ws/datasets/match_april/training.csv",
+        "/home/stud/ath/ath_ws/datasets/match_april/training_may_mo_mg.csv",
         header=0,
         names=(
             "dataset", "cam", "kpid", "pair_name", "x0", "y0", "x1", "y1", "x_guess", "y_guess", "certainty",
         )
     )
     
-    training_mg_df = pd.read_csv(
-        "/home/stud/ath/ath_ws/datasets/match_april/training_mg.csv",
-        header=0,
-        names=(
-            "dataset", "cam", "kpid", "pair_name", "x0", "y0", "x1", "y1", "x_guess", "y_guess", "certainty",
-        )
-    )
+    # training_mg_df = pd.read_csv(
+    #     "/home/stud/ath/ath_ws/datasets/match_april/training_mg.csv",
+    #     header=0,
+    #     names=(
+    #         "dataset", "cam", "kpid", "pair_name", "x0", "y0", "x1", "y1", "x_guess", "y_guess", "certainty",
+    #     )
+    # )
     
-    training_df = pd.concat([training_df, training_mg_df], ignore_index=True)
+    # training_df = pd.concat([training_df, training_mg_df], ignore_index=True)
     
     high_error_kpids_df = pd.read_csv("/home/stud/ath/ath_ws/datasets/match_april/high_error_kpids.csv")
 
@@ -207,8 +226,8 @@ def main(threshold=30, patch_size=32):
     print(f"Invalid rows: {invalid_count}")
 
     # base_path = f"/home/stud/ath/ath_ws/datasets/match_april/{threshold}_inline"
-    base_path = f"/home/stud/ath/ath_ws/datasets/match_april/more/{threshold}"
-    # base_path = f"/home/stud/ath/ath_ws/datasets/match_april/{threshold}"
+    # base_path = f"/home/stud/ath/ath_ws/datasets/match_april/more/{threshold}"
+    base_path = f"/home/stud/ath/ath_ws/datasets/match_april/{threshold}"
     
     if os.path.exists(base_path):
         shutil.rmtree(base_path) 
