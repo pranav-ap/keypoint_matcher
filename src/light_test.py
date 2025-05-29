@@ -121,7 +121,7 @@ class MatcherModel(nn.Module):
         self.head = nn.Sequential(
             nn.Linear(out_channels + 2, 128),
             nn.ReLU(),
-            nn.Linear(128, 4)
+            nn.Linear(128, 3)
         )
      
         self._initialize_weights()
@@ -178,10 +178,9 @@ class MatcherModel(nn.Module):
         x = self.head(x)
         
         coords = F.tanh(x[:, :2]) 
-        confs = F.sigmoid(x[:, 2:])  # (B, 2)
-        confs_box, confs_point = confs[:, 0], confs[:, 1]  # (B,), (B,)
+        confs = F.sigmoid(x[:, 2]) 
         
-        return coords, confs_box, confs_point
+        return coords, confs 
 
     def _initialize_weights(self):
         for m in self.modules():
@@ -203,9 +202,6 @@ class MatcherModel(nn.Module):
                 # Initialize BatchNorm layers
                 init.ones_(m.weight)
                 init.zeros_(m.bias)
-
-
-
 
 
 class Light(pl.LightningModule):
@@ -253,47 +249,21 @@ class Light(pl.LightningModule):
 
         return percentage
     
-    @staticmethod
-    def _compute_point_confidence_loss(conf_pred, coords_pred, coords_targets):
-        std_dev = 2.0
-        covariance_matrix = torch.diag(torch.tensor([std_dev ** 2, std_dev ** 2], device=coords_targets.device))
-
-        gaussian = torch.distributions.MultivariateNormal(
-            loc=coords_targets, 
-            covariance_matrix=covariance_matrix
-        )
-
-        raw_probabilities = torch.exp(gaussian.log_prob(coords_pred))
-        max_probabilities = torch.exp(gaussian.log_prob(coords_targets))
-
-        # Normalize probabilities to make p = 1 when coords_pred = coords
-        normalized_probabilities = raw_probabilities / (max_probabilities + 0.000001)
-
-        loss = F.mse_loss(conf_pred, normalized_probabilities)
-        
-        return loss
-    
     def _shared_step(self, batch, stage='train'):
         ref_patches, references, tar_patches, targets, estimates, confs_true = batch
-        
-        coords_delta_norm_pred, confs_box_pred, confs_point_pred = self.model(
+
+        coords_delta_norm_pred, confs_pred = self.model(
             ref_patches,
             tar_patches,
             estimates,
         ) 
-        
-        # Convert coordinate delta to prediction
-        coords_delta_pred = coords_delta_norm_pred * ((config.image.patch_size - 1) / 2)
-        coords_pred = estimates + coords_delta_pred
 
         coords_delta_pred = coords_delta_norm_pred.float() * ((config.image.patch_size - 1) / 2)
         coords_pred = estimates + coords_delta_pred  
-
-        confs_box_pred_binary = (confs_box_pred > config.image.confidence_decision_threshold).float()
+        
+        confs_pred_binary = (confs_pred > config.image.confidence_decision_threshold).float()
         confs_true_binary = confs_true.float() 
-                
-        confs_point_loss = self._compute_point_confidence_loss(confs_point_pred, coords_pred, targets)
-
+        
         # Compute losses
         
         targets_norm = Light._normalize_coords(targets.float())
@@ -303,13 +273,10 @@ class Light(pl.LightningModule):
         # coords_loss = F.l1_loss(coords_delta_norm_pred, coords_delta_norm_true)
         # coords_loss = F.smooth_l1_loss(coords_delta_norm_pred, coords_delta_norm_true, beta=0.1)
 
-        # coords_error = coords_delta_norm_pred - coords_delta_norm_true
-        # coords_loss = torch.mean(torch.log(1 + 1000 * coords_error.pow(2)))
-        
         coords_error = coords_delta_norm_pred - coords_delta_norm_true
-        coords_loss = torch.mean(torch.log(1 + 100 * coords_error.pow(2)))
-        
-        confs_loss = F.binary_cross_entropy(confs_box_pred, confs_true_binary)
+        coords_loss = torch.mean(torch.log(1 + 1000 * coords_error.pow(2)))
+
+        confs_loss = F.binary_cross_entropy(confs_pred, confs_true_binary)
        
         # Weighted loss
         
@@ -320,9 +287,8 @@ class Light(pl.LightningModule):
         
         alpha_coords_loss = coords_loss
         alpha_confs_loss = alpha * confs_loss
-        alpha_confs_point_loss = alpha * confs_point_loss
         
-        loss = alpha_coords_loss + alpha_confs_loss + alpha_confs_point_loss
+        loss = alpha_coords_loss + alpha_confs_loss 
         
         # Calculate Coords metrics
 
@@ -337,9 +303,9 @@ class Light(pl.LightningModule):
 
         # Calculate Confs metrics
 
-        conf_accuracy = self.conf_accuracy(confs_box_pred_binary, confs_true_binary)
+        conf_accuracy = self.conf_accuracy(confs_pred_binary, confs_true_binary)
 
-        conf_matrix = self.conf_matrix(confs_box_pred, confs_true_binary)
+        conf_matrix = self.conf_matrix(confs_pred, confs_true_binary)
         tn, fp, fn, tp = conf_matrix.flatten()
         
         precision_0 = tn / (tn + fn + 1e-8)
@@ -361,7 +327,6 @@ class Light(pl.LightningModule):
             f"{stage}/conf_loss": confs_loss, 
             f"{stage}/alpha_coords_loss": alpha_coords_loss, 
             f"{stage}/alpha_confs_loss": alpha_confs_loss, 
-            f"{stage}/alpha_confs_point_loss": alpha_confs_point_loss, 
 
             f"{stage}/coords_mae": coords_mae,
             f"{stage}/coords_percent_3_pixel": coords_percent_3_pixel,
@@ -386,7 +351,7 @@ class Light(pl.LightningModule):
             f"{stage}/conf_tn": tn.float(),
         }
 
-        return metrics, coords_pred, confs_box_pred, confs_point_pred
+        return metrics, coords_pred, confs_pred
 
     @torch.no_grad()
     def _test_step(self, batch, stage='test'):
@@ -458,7 +423,7 @@ class Light(pl.LightningModule):
         
         # Test
         
-        conf_mask = confs_pred > 0.98
+        conf_mask = confs_pred > 0.98 
         coords_pred_conf = coords_pred[conf_mask]
         targets_conf = targets[conf_mask]
 
@@ -522,14 +487,13 @@ class Light(pl.LightningModule):
         return metrics, coords_pred, confs_pred
 
     def training_step(self, batch, batch_idx):
-        metrics, coords_pred, confs_box_pred, confs_point_pred = self._shared_step(batch, stage='train')
-        conf_combined = confs_box_pred * confs_point_pred
+        metrics, coords_pred, conf_pred = self._shared_step(batch, stage='train')
 
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(batch, coords_pred, confidence_pred=conf_combined, limit_count=limit_count, stage='train')
+            self._log_images(batch, coords_pred, confidence_pred=conf_pred, limit_count=limit_count, stage='train')
 
         loss = metrics['train/loss']
 
@@ -537,27 +501,26 @@ class Light(pl.LightningModule):
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):
-        metrics, coords_pred, confs_box_pred, confs_point_pred = self._shared_step(batch, stage='val')
-        conf_combined = confs_box_pred * confs_point_pred
-        
+        metrics, coords_pred, conf_pred = self._shared_step(batch, stage='val')
+
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(batch, coords_pred, confidence_pred=conf_combined, limit_count=limit_count, stage='val')
+            self._log_images(batch, coords_pred, confidence_pred=conf_pred, limit_count=limit_count, stage='val')
         
         return metrics
 
     @torch.no_grad()
     def test_step(self, batch, batch_idx):
-        metrics, coords_pred, confs_box_pred, confs_point_pred = self._shared_step(batch, stage='test')
-        conf_combined = confs_box_pred * confs_point_pred
-        
+        # ref_patches, references, tar_patches, targets, estimates, confidences = batch
+        metrics, coords_pred, conf_pred = self._test_step(batch, stage='test')
+
         self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=False)
 
         if batch_idx == 0:
             limit_count = config.val.num_patch_pairs_to_save
-            self._log_images(batch, coords_pred, confidence_pred=conf_combined, limit_count=limit_count, stage='val')
+            self._log_images(batch, coords_pred, confidence_pred=conf_pred, limit_count=limit_count, stage='val')
         
         return metrics
 

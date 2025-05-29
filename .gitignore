@@ -1,6 +1,8 @@
 output/
 data/
 .neptune
+*.out
+.nfs*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -23,18 +23,6 @@ class MyLogger:
             MyLogger.tensorboard_logger = MyLogger.get_tensorboard_logger()
 
     @staticmethod
-    def get_loggers():
-        loggers = []
-
-        if MyLogger.neptune_logger is not None:
-            loggers.append(MyLogger.neptune_logger)
-
-        if MyLogger.tensorboard_logger is not None:
-            loggers.append(MyLogger.tensorboard_logger)
-
-        return loggers
-
-    @staticmethod
     def init_loguru():
         logger.remove()  # Remove the default handler
         logger.add(
@@ -75,7 +63,7 @@ class MyLogger:
 
         run = neptune.init_run(
             project=project,
-            source_files=['src'],
+            source_files=['src', 'config'],
             dependencies=f'{config.paths.roots.project}/environment.yaml',
         )
 

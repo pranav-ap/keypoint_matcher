@@ -20,11 +20,14 @@ dependencies:
     - h5py
     - lightning
     - diffusers
-    - datasets
-    - click
     - neptune
+    - torchinfo
+    - torchview
     - pip:
-        - opencv-python
         - albumentations
+        - opencv-python
         - tensorboard
+        - grad-cam
+        - graphviz
+        - einops
         

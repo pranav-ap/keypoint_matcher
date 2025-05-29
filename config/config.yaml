@@ -1,66 +1,78 @@
-log_level: TRACE  # TRACE WARNING
+log_level: WARNING  # TRACE WARNING
 
-task:
-    dataset: monado_slam
-    # MOO07_mapping_easy  MOO11_short_3_backandforth
-    video: MOO11_short_3_backandforth
-    cam: cam0
-
-    single_video_mode: True
-    eda_mode: False  # True False
 
 experiment:
-    model: resnet
-    loss: mse_loss
-    name: ${experiment.model}_${experiment.loss}
-    url: http://localhost:8080  # http://localhost:8080 file:///D:/thesis_code/keypoint_matcher/output
+    model: lotus 
+    linux: 57 
 
-paths:
-    roots:
-        ws: /home/stud/ath/ath_ws # /home/stud/ath/ath_ws  D:/thesis_code
-        mav: ${paths.roots.ws}/datasets/${task.dataset}/${task.video}/mav0
-        project: ${paths.roots.ws}/keypoint_matcher
-        output: ${paths.roots.project}/output
+    params: 2mil
+    heads: 2 
+    name: ${experiment.model}_${experiment.linux}_linux
 
-    output:
-        logs: ${paths.roots.output}/${experiment.name}/logs
-        checkpoints: ${paths.roots.output}/${experiment.name}/checkpoints
-        train_images: ${paths.roots.output}/${experiment.name}/images/train
-        val_images: ${paths.roots.output}/${experiment.name}/images/val
-        test_images: ${paths.roots.output}/${experiment.name}/images/test
+    eda_mode: False  # True False
 
-    matches: ${paths.roots.ws}/keypoint_dataset_pipeline/output/train/train_data.hdf5
-    images: ${paths.roots.mav}/${task.cam}/data
 
 image:
     # [width, height]
     original_image_shape: [640, 480]  # [640, 480]
-    patch_size: 32
-    patch_border: 4 # pixels
+    crop_image_shape: [ 630, 476 ] # [504, 504] [630, 476]
+    patch_size: 32 # 16  32  64
+    patch_size_folder: 26 # 10  26  56
+    patch_padding: 2
+    
+    jitter_reference: False
+    jitter_target: True 
+
+    max_perturb: 5 # 5 
+    guess_max_perturb: 0 # 0 4
+
+    patch_min_confidence: -1
+    bad_patch_min_confidence: 0.3 # 0.2 0.3
+    confidence_decision_threshold: 0.5 # 0.75 
+
 
 train:
-    train_batch_size: 4
-    val_batch_size: 4
-    num_patches_per_image: 20
+    batch_size: 40 
+    accumulate_grad_batches: 4
+    learning_rate: 1e-4   # 1e-4    
 
     fast_dev_run: False  # True False
     overfit_batches: 0
 
     patience: 5
-    max_epochs: 100
-    check_val_every_n_epoch: 1
+    max_epochs: 320
+    check_val_every_n_epoch: 2
     num_sanity_val_steps: 1
-    log_every_n_steps: 1
-    accumulate_grad_batches: 1
-    learning_rate: 1e-4
-
+    log_every_n_steps: 25 
+    
 val:
-    num_patch_pairs_to_save: 24
+    num_patch_pairs_to_save: 80
 
 test:
-    batch_size: 4
+    batch_size: 40
 
-loggers:
-    - tensorboard
-    - neptune
 
+loggers: # []
+  - neptune
+
+
+paths:
+    roots:
+        ws: /home/stud/ath/ath_ws
+        mav: ${paths.roots.ws}/datasets/${task.dataset}/${task.video}/mav0
+        project: ${paths.roots.ws}/keypoint_matcher
+        output: ${paths.roots.project}/output/${experiment.name}
+
+    output:
+        logs: ${paths.roots.output}/logs
+        checkpoints: ${paths.roots.output}/checkpoints
+        train_images: ${paths.roots.output}/images/train
+        val_images: ${paths.roots.output}/images/val
+        test_images: ${paths.roots.output}/images/test
+
+    images: ${paths.roots.mav}/${task.cam}/data
+
+    csv:
+        train: ${paths.roots.ws}/datasets/match_april/${image.patch_size_folder}/train.csv
+        val: ${paths.roots.ws}/datasets/match_april/${image.patch_size_folder}/val.csv
+        test: ${paths.roots.ws}/datasets/match_april/${image.patch_size_folder}/test.csv
